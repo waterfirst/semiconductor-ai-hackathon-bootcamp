@@ -69,10 +69,10 @@
     .evidence-carousel .section-head{margin-bottom:30px}
     .evidence-carousel-guide{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:12px 0;border-block:1px solid var(--line);color:var(--muted);font:11px var(--mono)}
     .evidence-carousel-guide strong{color:var(--ink)}
-    .evidence-carousel-viewport{position:relative;height:500px;margin-top:26px;perspective:1400px;touch-action:pan-y;user-select:none}
+    .evidence-carousel-viewport{position:relative;height:500px;margin-top:26px;perspective:880px;perspective-origin:50% 44%;touch-action:pan-y;user-select:none}
     .evidence-carousel-stage{position:absolute;inset:0;transform-style:preserve-3d}
-    .evidence-card{position:absolute;top:0;left:50%;width:min(360px,calc(100vw - 56px));height:430px;overflow:hidden;background:var(--panel);border:1px solid var(--ink);box-shadow:0 18px 42px rgba(16,27,45,.18);transform-origin:center center;transition:transform .5s cubic-bezier(.2,.75,.25,1),opacity .35s ease,filter .35s ease;cursor:pointer;will-change:transform,opacity}
-    .evidence-card[data-active="true"]{cursor:default}
+    .evidence-card{position:absolute;top:0;left:50%;width:min(360px,calc(100vw - 56px));height:430px;overflow:hidden;background:var(--panel);border:1px solid var(--ink);box-shadow:0 18px 42px rgba(16,27,45,.18);transform-origin:center center;backface-visibility:hidden;transition:transform .58s cubic-bezier(.16,.8,.24,1),opacity .4s ease,filter .4s ease,box-shadow .4s ease;cursor:pointer;will-change:transform,opacity}
+    .evidence-card[data-active="true"]{cursor:default;box-shadow:0 34px 68px rgba(16,27,45,.3)}
     .evidence-card-visual{position:relative;height:210px;overflow:hidden;background:var(--ink);border-bottom:1px solid var(--ink)}
     .evidence-card-visual img{display:block;width:100%;height:100%;object-fit:cover;filter:saturate(.78) contrast(1.04)}
     .evidence-card[data-active="true"] .evidence-card-visual img{filter:saturate(1) contrast(1.04)}
@@ -356,13 +356,17 @@ git push</code><button class="copy" type="button">복사</button></pre><div clas
         button.type='button';button.className='evidence-carousel-tab';button.setAttribute('role','tab');button.setAttribute('aria-controls',card.id);button.setAttribute('aria-label',`${index+1}단계로 이동`);button.addEventListener('click',()=>go(index));tabs.append(button);return button;
       });
       function render(){
-        const compact=window.innerWidth<640,shift=compact?150:225,depth=compact?85:125;
+        const compact=window.innerWidth<640;
         cards.forEach((card,index)=>{
-          const distance=index-active,visible=Math.abs(distance)<=2,rotation=reduced.matches?0:distance*-24,scale=distance===0?1:.88;
-          card.style.transform=`translate3d(calc(-50% + ${distance*shift}px), ${Math.abs(distance)*10}px, ${Math.abs(distance)*-depth}px) rotateY(${rotation}deg) scale(${scale})`;
-          card.style.opacity=visible?String(distance===0?1:.58):'0';
-          card.style.filter=distance===0?'none':'grayscale(.2)';
-          card.style.zIndex=String(cards.length-Math.abs(distance));
+          const distance=index-active,depthIndex=Math.abs(distance),direction=Math.sign(distance),visible=depthIndex<=2;
+          const offset=depthIndex===0?0:direction*(compact?(depthIndex===1?142:232):(depthIndex===1?242:392));
+          const z=depthIndex===0?72:(depthIndex===1?-145:-295);
+          const rotation=reduced.matches?0:direction*(depthIndex===1?-46:-62);
+          const scale=depthIndex===0?1.045:(depthIndex===1?.88:.74);
+          card.style.transform=`translate3d(calc(-50% + ${offset}px), ${depthIndex*9}px, ${z}px) rotateY(${rotation}deg) scale(${scale})`;
+          card.style.opacity=visible?String(depthIndex===0?1:(depthIndex===1?.72:.38)):'0';
+          card.style.filter=depthIndex===0?'none':`grayscale(${depthIndex===1?.18:.38}) brightness(${depthIndex===1?.9:.76})`;
+          card.style.zIndex=String(cards.length-depthIndex);
           card.dataset.active=String(distance===0);
           card.setAttribute('aria-hidden',String(distance!==0));
           card.tabIndex=distance===0?0:-1;
