@@ -241,6 +241,34 @@ test('resize and persist the desktop visual and workbench split', async ({ page 
   await expect(page.getByRole('separator', { name: '3D 화면과 작업창 너비 조절' })).toHaveAttribute('aria-valuenow', '50')
 })
 
+test('explore companies in the 3D semiconductor knowledge map', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+  await page.goto('/#industry-map')
+  await expect(page.getByRole('heading', { name: '반도체 생태계 3D 지식맵' })).toBeVisible()
+  await expect(page.getByLabel('반도체 생태계 3D 지식맵')).toContainText('28 / 28 COMPANIES')
+  await expect(page.getByRole('heading', { name: 'ASML' })).toBeVisible()
+  await expect(page.getByText('심층분석 완료')).toBeVisible()
+  await expect(page.getByText('€9.326B', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Applied Materials 상세보고서 열기' }).click()
+  await expect(page.getByRole('heading', { name: 'Applied Materials' })).toBeVisible()
+  await expect(page.getByText('$9.115B', { exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('industry-map.png') })
+  await page.getByLabel('기업·공정 검색').fill('CMP')
+  await expect(page.getByLabel('반도체 생태계 3D 지식맵')).toContainText(/COMPANIES/)
+  expect(errors).toEqual([])
+})
+
+test('knowledge map remains readable on mobile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', '모바일 프로젝트에서만 확인')
+  await page.goto('/#industry-map')
+  await expect(page.getByRole('heading', { name: '반도체 생태계 3D 지식맵' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'ASML' })).toBeVisible()
+  const bodyWidth = await page.locator('body').evaluate((element) => element.scrollWidth)
+  expect(bodyWidth).toBeLessThanOrEqual(page.viewportSize()?.width ?? 390)
+  await page.screenshot({ path: testInfo.outputPath('industry-map-mobile.png') })
+})
+
 test('continue personal AI dialogue inside an automatic response popup', async ({ page }) => {
   const mockResponse = '가설 1은 챔버 위치 편차, 가설 2는 RF 조건 변화, 가설 3은 측정 편향이다. 위치별 분포와 대조군으로 각각 반증한다.'
   await page.route('**/api/sessions/*/llm/check', (route) => route.fulfill({

@@ -289,7 +289,7 @@ function LobbyScene({ step, acting, hall, cinematic, scenarios, onSelect, reduce
   </Canvas>
 }
 
-export function CleanroomLobby({ scenarios, loading, error, onSelect }: { scenarios: ScenarioSummary[]; loading: boolean; error: string; onSelect: (id: string) => void }) {
+export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndustryMap }: { scenarios: ScenarioSummary[]; loading: boolean; error: string; onSelect: (id: string) => void; onOpenIndustryMap: () => void }) {
   const [step,setStep] = useState(0)
   const [acting,setActing] = useState(false)
   const [moving,setMoving] = useState(false)
@@ -332,7 +332,7 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect }: { scenar
   }
 
   return <main className={`cleanroom-lobby ${hall?'hall-open':''} ${cinematic?'cinematic-entry':''}`}>
-    <header className="game-topbar"><div><b>VIRTUAL FAB</b><span>FACILITY 01 · SCHOLARBRIDGE</span></div><div><span>ACCESS</span><strong>{hall?'GRANTED':cinematic?'ENTERING':`${step}/4`}</strong></div></header>
+    <header className="game-topbar"><div><b>VIRTUAL FAB</b><span>FACILITY 01 · SCHOLARBRIDGE</span></div><div><button type="button" className="industry-map-entry" onClick={onOpenIndustryMap}>3D 산업 지식맵</button><span>ACCESS</span><strong>{hall?'GRANTED':cinematic?'ENTERING':`${step}/4`}</strong></div></header>
     <section className="lobby-viewport" aria-label="가상 클린룸 입실 화면">
       <LobbyScene step={step} acting={acting} hall={hall} cinematic={cinematic} scenarios={scenarios} onSelect={onSelect} reducedMotion={reducedMotion}/>
       <div className="scanlines" aria-hidden="true"/>

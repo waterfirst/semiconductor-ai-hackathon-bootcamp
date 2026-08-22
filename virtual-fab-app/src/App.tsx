@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { api } from './api'
 import { CleanroomLobby } from './CleanroomLobby'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
@@ -9,6 +9,8 @@ import { FabScene } from './FabScene'
 import { useFabSession } from './hooks/useFabSession'
 import type { AIExchange, CompetencyEvidence, Decision, Scenario, ScenarioSummary, SessionState, StageId } from './types'
 import './styles.css'
+
+const IndustryKnowledgeMap = lazy(() => import('./IndustryKnowledgeMap').then((module) => ({ default: module.IndustryKnowledgeMap })))
 
 const CHOICE_LABELS: Record<string, string> = {
   hold: '판정 보류 후 분포 확인', release_by_mean: '대표 평균값만 보고 진행',
@@ -499,8 +501,8 @@ function ResultPanel({ scenario, session, busy, onRestart }: { scenario: Scenari
   </div>
 }
 
-function ModuleHome({ scenarios, loading, error, onSelect }: { scenarios: ScenarioSummary[]; loading: boolean; error: string; onSelect: (id: string) => void }) {
-  return <CleanroomLobby scenarios={scenarios} loading={loading} error={error} onSelect={onSelect}/>
+function ModuleHome({ scenarios, loading, error, onSelect, onOpenIndustryMap }: { scenarios: ScenarioSummary[]; loading: boolean; error: string; onSelect: (id: string) => void; onOpenIndustryMap: () => void }) {
+  return <CleanroomLobby scenarios={scenarios} loading={loading} error={error} onSelect={onSelect} onOpenIndustryMap={onOpenIndustryMap}/>
 }
 
 function ScenarioExperience({ scenarioId, onBack }: { scenarioId: string; onBack: () => void }) {
@@ -620,6 +622,7 @@ export default function App() {
   const back = () => { window.history.pushState(null, '', window.location.pathname + window.location.search); setSelectedId('') }
   const validSelection = scenarios.some((item) => item.id === selectedId)
 
+  if (selectedId === 'industry-map') return <Suspense fallback={<main className="loading">반도체 산업 지식맵을 불러오는 중…</main>}><IndustryKnowledgeMap onBack={back}/></Suspense>
   if (selectedId && (validSelection || catalogLoading)) return <ScenarioExperience key={selectedId} scenarioId={selectedId} onBack={back}/>
-  return <ModuleHome scenarios={scenarios} loading={catalogLoading} error={selectedId && !validSelection ? '선택한 시나리오를 찾지 못했어. 아래 목록에서 다시 골라줘.' : catalogError} onSelect={select}/>
+  return <ModuleHome scenarios={scenarios} loading={catalogLoading} error={selectedId && !validSelection ? '선택한 시나리오를 찾지 못했어. 아래 목록에서 다시 골라줘.' : catalogError} onSelect={select} onOpenIndustryMap={() => select('industry-map')}/>
 }
