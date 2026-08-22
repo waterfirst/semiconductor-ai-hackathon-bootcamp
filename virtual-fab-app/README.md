@@ -75,7 +75,7 @@ npm run build
 
 - 공개 주소: <https://waterfirst.pro/virtual-fab/>
 - 3D 산업 지식맵: <https://waterfirst.pro/virtual-fab/#industry-map>
-- 지식맵은 28개 회사의 제품·공정·직무·위험·공식 원문을 연결한다. ASML과 Applied Materials는 공식 실적을 재계산한 심층분석이며, 나머지는 공식 홈페이지 기반 요약 프로필로 명확히 구분한다.
+- 지식맵은 30개 회사를 `설계·소재 → 장비 → Samsung·SK hynix·Micron → 로직결합·패키징·테스트 → AI 시스템 수요`의 5개 레이어로 연결한다. 분홍 실선은 공식 발표로 확인된 관계만 뜻하며, 나머지는 실제 계약이 아닌 교육용 역할 분류다.
 - Nginx가 TLS를 종료하고 로컬 `127.0.0.1:8510`으로 프록시한다.
 - BYOK 기능은 반드시 위 HTTPS 주소 또는 localhost에서 사용한다.
 - 인증서는 Let's Encrypt/Certbot 자동 갱신 대상으로 등록되어 있다.
