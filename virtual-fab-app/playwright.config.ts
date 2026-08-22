@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: './tests',
   testMatch: 'e2e.spec.ts',
   timeout: 120_000,
-  use: { baseURL: 'http://127.0.0.1:8510', trace: 'retain-on-failure', reducedMotion: 'reduce' },
+  use: { baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:8510', trace: 'retain-on-failure', reducedMotion: 'reduce' },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },

@@ -2,11 +2,12 @@ import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties, ty
 import { api } from './api'
 import { CleanroomLobby } from './CleanroomLobby'
 import { EvidenceDrawer } from './components/EvidenceDrawer'
+import { auditDataset, DataEvidenceVisualizer, DialogueEvidenceBoard } from './components/InvestigationNotebook'
 import { PersonalAIConnector } from './components/PersonalAIConnector'
 import { StageProgress } from './components/StageProgress'
 import { FabScene } from './FabScene'
 import { useFabSession } from './hooks/useFabSession'
-import type { AIExchange, Decision, Scenario, ScenarioSummary, SessionState, StageId } from './types'
+import type { AIExchange, CompetencyEvidence, Decision, Scenario, ScenarioSummary, SessionState, StageId } from './types'
 import './styles.css'
 
 const CHOICE_LABELS: Record<string, string> = {
@@ -27,6 +28,7 @@ const QUESTION_PHASES = [
 const MIN_DEEP_DIALOGUE_TURNS = 8
 const DEFAULT_VISUAL_WIDTH = 48
 const WORKSPACE_WIDTH_KEY = 'virtual-fab:workspace-visual-width'
+const TOOL_INFORMATION_DEFAULTS: Record<string, number> = { optical: 12, ellipsometry: 18, sem: 22, fib: 28, tem: 32, edx: 22, xps: 28, electrical: 24 }
 
 function phaseForTurn(turn: number) {
   if (turn <= 2) return QUESTION_PHASES[0]
@@ -43,6 +45,41 @@ function tokenSummary(usage: AIExchange['usage']) {
     : `응답 ${usage.completion_tokens.toLocaleString()} · 전체 ${usage.total_tokens.toLocaleString()} tokens`
 }
 
+function saveTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function conversationMarkdown(conversation: AIExchange[]) {
+  if (conversation.length === 0) return '_아직 기록된 AI 문답이 없습니다._'
+  return conversation.map((exchange) => {
+    const verdict = exchange.review?.verdict === 'accept' ? '채택' : exchange.review?.verdict === 'revise' ? '수정' : exchange.review?.verdict === 'reject' ? '기각' : '미검토'
+    return `### Q${exchange.turn_no} · ${exchange.phase?.label ?? '문답'}\n\n- 키워드: ${(exchange.keywords ?? []).join(', ') || '기록 없음'}\n- 모델: ${exchange.provider_label} · ${exchange.model}\n- 사람 판정: ${verdict}\n- 검증 근거: ${exchange.review?.evidence_note || '기록 없음'}\n\n**질문**\n\n${exchange.question}\n\n**AI 응답**\n\n${exchange.response}`
+  }).join('\n\n---\n\n')
+}
+
+function currentNotebookMarkdown(scenario: Scenario, state: SessionState, conversation: AIExchange[], humanCheck: string, audit: ReturnType<typeof auditDataset>) {
+  return `# Virtual Fab 분석 노트\n\n- 시나리오: ${scenario.process} · ${scenario.title}\n- 버전/seed: v${state.scenario_version} / ${state.seed}\n- 작성 시각: ${new Date().toLocaleString('ko-KR')}\n- 성격: 교육용 합성 데이터 분석 기록\n\n## 데이터 출처와 품질\n\n- 서버 세션 CSV: ${window.location.origin}${import.meta.env.BASE_URL}api/sessions/${state.id}/dataset.csv\n- 전체 행: ${audit.rows}\n- 분석 가능: ${audit.usable}\n- 결측: ${audit.missing}\n- 단위 오류: ${audit.unitErrors}\n- 중복: ${audit.duplicates}\n\n## AI 문답과 사람의 검증\n\n${conversationMarkdown(conversation)}\n\n## 종합 검증 메모\n\n${humanCheck || '기록 없음'}\n\n## 사용 한계\n\n이 문서는 재현 가능한 교육용 합성 입력에 대한 학습 기록이며 실제 회사 Recipe, 장비 성능 또는 현장 인과관계를 의미하지 않습니다.\n`
+}
+
+function completedNotebookMarkdown(scenario: Scenario, session: SessionState, outcomes: CompetencyEvidence | null) {
+  const investigation = session.history.find((item) => item.stage === 'investigation')
+  const conversation = Array.isArray(investigation?.payload?.ai_conversation) ? investigation.payload.ai_conversation as AIExchange[] : session.ai_conversation
+  const decisions = session.history.map((item) => `- ${scenario.stages.find((stage) => stage.id === item.stage)?.label ?? item.stage}: ${item.tools?.map((id) => scenario.tools[id]?.label).filter(Boolean).join(' + ') || CHOICE_LABELS[item.choice] || item.choice}`).join('\n')
+  const conclusion = investigation?.payload?.conclusion && typeof investigation.payload.conclusion === 'object' ? JSON.stringify(investigation.payload.conclusion, null, 2) : '기록 없음'
+  const competency = outcomes
+    ? `- 총점: ${outcomes.total}/${outcomes.max_total}\n${outcomes.dimensions.map((item) => `- ${item.label}: ${item.score}/${item.max_score} — ${item.evidence}`).join('\n')}\n- AI 사람 검토: ${outcomes.ai_review.reviewed}/${outcomes.ai_review.turns}회 · 근거 메모 ${outcomes.ai_review.evidence_notes}개`
+    : '화면에서 역량 증거를 불러오지 못했습니다.'
+  return `# Virtual Fab 최종 조사 기록\n\n- 시나리오: ${scenario.process} · ${scenario.title}\n- 버전/seed: v${session.scenario_version} / ${session.seed}\n- 최종 판정: ${session.verdict}\n- 점수: ${session.score}/100\n- 남은 예산/시간: ${session.budget}C / ${session.time_left}분\n- 작성 시각: ${new Date().toLocaleString('ko-KR')}\n\n## 의사결정 경로\n\n${decisions}\n\n## 데이터 결론\n\n\`\`\`json\n${conclusion}\n\`\`\`\n\n## AI 문답과 사람의 검증\n\n${conversationMarkdown(conversation)}\n\n## 종합 검증 메모\n\n${String(investigation?.payload?.human_check ?? '기록 없음')}\n\n## Holdout 검증\n\n${session.validation_metrics ? `Baseline ${session.validation_metrics.baseline} → Holdout ${session.validation_metrics.holdout} · ${session.validation_metrics.improved ? '개선' : '미개선'}` : '기록 없음'}\n\n## 역량 증거 리포트\n\n${competency}\n\n> 교육용 합성 데이터의 서버 기록에서 계산한 과정 증거이며, 사전·사후 검사나 실제 공정 성과를 측정한 학습 향상 점수가 아닙니다.\n\n## 사용 한계\n\n이 문서는 교육용 합성 데이터에 대한 문제해결 과정이며 실제 공정 인과관계나 현장 성과를 보장하지 않습니다. AI 출력은 사람의 검증 기록과 함께 해석해야 합니다.\n`
+}
+
 function deepQuestionForTurn(turn: number, scenario: Scenario, terms: string[]) {
   const keywords = terms.length > 0 ? terms.join(', ') : scenario.keywords.slice(0, 2).map((item) => item.term).join(', ')
   const requests = [
@@ -56,7 +93,7 @@ function deepQuestionForTurn(turn: number, scenario: Scenario, terms: string[]) 
     '면접 PT에 넣을 수 있도록 상황, 실제 데이터 수치, 경쟁 가설, 반증 과정, 사람의 최종 판단과 한계를 연결해 요약해줘.',
   ]
   const request = requests[turn - 1] ?? '이 결론에 대한 가장 강한 반론과 추가 검증 한계를 제시하고 면접관의 예상 질문에 답해줘.'
-  return `[문답 ${turn}/15 · ${phaseForTurn(turn).label}]\n[핵심 키워드] ${keywords}\n[데이터 연결] 이 사이트가 현재 세션의 서버 CSV 원문 42행과 통계 요약을 자동 첨부함. PC 다운로드 경로는 사용하지 말 것\n[데이터 조건] 첨부된 교육용 합성 CSV의 실제 행 수·결측·Lot·Tool·wafer zone 통계를 근거로 사용할 것\n[질문] ${request}\n[출력 형식] 데이터 근거 / 해석 / 가설 또는 판단 / 반증 기준 / 남은 불확실성 / 추천 후속 질문`
+  return `[문답 ${turn}/15 · ${phaseForTurn(turn).label}]\n[핵심 키워드] ${keywords}\n[데이터 연결] 이 사이트가 현재 세션의 서버 CSV 원문 전체와 통계 요약을 자동 첨부함. PC 다운로드 경로는 사용하지 말 것\n[데이터 조건] 첨부된 교육용 합성 CSV의 실제 행 수·결측·Lot·Tool·공간 위치 통계를 근거로 사용할 것\n[질문] ${request}\n[출력 형식] 데이터 근거 / 해석 / 가설 또는 판단 / 반증 기준 / 남은 불확실성 / 추천 후속 질문`
 }
 
 function SignalPlot({ scenario }: { scenario: Scenario }) {
@@ -96,16 +133,54 @@ function ResourceMeter({ label, value, limit, unit }: { label: string; value: nu
   return <div className={`resource-meter ${risk ? 'over' : ''}`}><div><span>{label}</span><b>{value}{unit} / {limit}{unit}</b></div><div className="meter-track"><span style={{ '--meter-ratio': ratio / 100 } as CSSProperties} /></div></div>
 }
 
+function analysisTradeoff(scenario: Scenario, selectedIds: string[], budget: number, timeLeft: number) {
+  const selected = selectedIds.map((id) => ({ ...scenario.tools[id], information: scenario.tools[id]?.information ?? TOOL_INFORMATION_DEFAULTS[id] ?? 0 })).filter((tool) => tool.label)
+  const required = new Set(scenario.required_analysis_kinds)
+  const covered = new Set(selected.map((tool) => tool.kind).filter((kind) => required.has(kind)))
+  const coverageRatio = required.size > 0 ? covered.size / required.size : 1
+  const relevantInformation = [...required].reduce((sum, kind) => sum + Math.max(0, ...selected.filter((tool) => tool.kind === kind).map((tool) => tool.information)), 0)
+  const confidence = Math.min(95, Math.round(15 + 55 * coverageRatio + Math.min(25, relevantInformation / 2)))
+  const cost = selected.reduce((sum, tool) => sum + tool.cost, 0)
+  const time = selected.reduce((sum, tool) => sum + tool.time, 0)
+  const entries = Object.entries(scenario.tools)
+  const viable: Array<{ ids: string[]; cost: number; time: number; destructive: number }> = []
+  for (let mask = 1; mask < 2 ** entries.length; mask += 1) {
+    const candidates = entries.filter((_, index) => mask & (1 << index)).map(([id, tool]) => [id, { ...tool, information: tool.information ?? TOOL_INFORMATION_DEFAULTS[id] ?? 0 }] as const)
+    if (![...required].every((kind) => candidates.some(([, tool]) => tool.kind === kind))) continue
+    const candidateCost = candidates.reduce((sum, [, tool]) => sum + tool.cost, 0)
+    const candidateTime = candidates.reduce((sum, [, tool]) => sum + tool.time, 0)
+    if (candidateCost <= budget && candidateTime <= timeLeft) viable.push({ ids: candidates.map(([id]) => id), cost: candidateCost, time: candidateTime, destructive: candidates.filter(([, tool]) => tool.destructive).length })
+  }
+  viable.sort((a, b) => (a.cost + a.time) - (b.cost + b.time) || a.destructive - b.destructive || a.ids.length - b.ids.length || a.ids.join().localeCompare(b.ids.join()))
+  const benchmark = viable[0] ?? { ids: [], cost: 0, time: 0, destructive: 0 }
+  const coverage = covered.size === required.size
+  const withinLimits = cost <= budget && time <= timeLeft
+  return {
+    cost, time, confidence, coverage, withinLimits,
+    coveredKinds: covered.size, requiredKinds: required.size,
+    efficiency: Number((confidence / Math.max(1, cost + time)).toFixed(2)),
+    destructiveCount: selected.filter((tool) => tool.destructive).length,
+    resourceEfficient: coverage && withinLimits && benchmark.ids.length > 0 && cost <= benchmark.cost * 1.5 && time <= benchmark.time * 1.5,
+    benchmark,
+  }
+}
+
 function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario; state: SessionState; onSubmit: (decision: Decision) => Promise<void>; busy: boolean }) {
   const stage = scenario.stages[state.stage_index]
   const [choice, setChoice] = useState('')
   const [prompt, setPrompt] = useState(() => deepQuestionForTurn(1, scenario, scenario.keywords.slice(0, 2).map((item) => item.term)))
   const [humanCheck, setHumanCheck] = useState('AI 제안은 공정 교재와 합성 데이터 분포, 측정 원리 및 대안 가설을 대조해 사람이 검증한다.')
   const [repeats, setRepeats] = useState(3)
-  const [tools, setTools] = useState<string[]>(['optical', 'sem'])
-  const [baseline, setBaseline] = useState('0.62')
-  const [holdout, setHoldout] = useState('0.78')
-  const [direction, setDirection] = useState('higher')
+  const [tools, setTools] = useState<string[]>(() => analysisTradeoff(scenario, [], state.budget, state.time_left).benchmark.ids)
+  const [culpritTool, setCulpritTool] = useState('')
+  const [region, setRegion] = useState('')
+  const [onsetLot, setOnsetLot] = useState('')
+  const [missingRows, setMissingRows] = useState('')
+  const [unitErrorRows, setUnitErrorRows] = useState('')
+  const [duplicateRows, setDuplicateRows] = useState('')
+  const [decoyReason, setDecoyReason] = useState('')
+  const [groupAxis, setGroupAxis] = useState('radius_bin')
+  const [aggregation, setAggregation] = useState('mean')
   const restoredConversation = state.ai_conversation ?? []
   const restoredLast = restoredConversation.at(-1)
   const [conversation, setConversation] = useState<AIExchange[]>(restoredConversation)
@@ -133,14 +208,24 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
   const selectedTerms = scenario.keywords.filter((item) => selectedKeywordIds.includes(item.id)).map((item) => item.term)
   useEffect(() => setQuestionGoal(currentPhase.id), [conversation.length, currentPhase.id])
 
-  const totals = useMemo(() => tools.reduce((sum, id) => ({ cost: sum.cost + scenario.tools[id].cost, time: sum.time + scenario.tools[id].time }), { cost: 0, time: 0 }), [tools, scenario.tools])
-  const validationPreview = useMemo(() => {
-    const before = Number(baseline); const after = Number(holdout)
-    if (!Number.isFinite(before) || !Number.isFinite(after)) return null
-    const delta = after - before
-    const improved = direction === 'higher' ? delta > 0 : delta < 0
-    return { delta, improved }
-  }, [baseline, holdout, direction])
+  const tradeoff = useMemo(() => analysisTradeoff(scenario, tools, state.budget, state.time_left), [scenario, tools, state.budget, state.time_left])
+  const groupedPreview = useMemo(() => {
+    if (!datasetPreview || !datasetPreview.headers.includes('radius_mm') || !datasetPreview.headers.includes('cd_nm')) return []
+    const index = Object.fromEntries(datasetPreview.headers.map((header, position) => [header, position]))
+    const groups = new Map<string, number[]>()
+    for (const row of datasetPreview.rows) {
+      const raw = Number(row[index.cd_nm]); const radius = Number(row[index.radius_mm])
+      if (!Number.isFinite(raw) || raw < 1) continue
+      const key = groupAxis === 'radius_bin' ? radius < 45 ? 'CENTER 0–44mm' : radius < 110 ? 'MIDDLE 45–109mm' : 'EDGE 110–150mm' : row[index[groupAxis]]
+      groups.set(key, [...(groups.get(key) ?? []), raw])
+    }
+    return [...groups.entries()].map(([label, values]) => {
+      const sorted = [...values].sort((a, b) => a - b)
+      const value = aggregation === 'count' ? values.length : aggregation === 'median' ? sorted[Math.floor(sorted.length / 2)] : aggregation === 'p95' ? sorted[Math.floor((sorted.length - 1) * .95)] : aggregation === 'std' ? Math.sqrt(values.reduce((sum, item) => sum + (item - values.reduce((a, b) => a + b, 0) / values.length) ** 2, 0) / values.length) : values.reduce((a, b) => a + b, 0) / values.length
+      return { label, value: Number(value.toFixed(3)), count: values.length }
+    })
+  }, [datasetPreview, groupAxis, aggregation])
+  const datasetAudit = useMemo(() => auditDataset(datasetPreview), [datasetPreview])
   const investigationRequirements = [
     { label: '서버 데이터 미리보기', detail: datasetDownloaded ? '완료' : 'CSV를 먼저 불러와', ready: datasetDownloaded },
     { label: 'AI 심층 문답', detail: `${conversation.length}/${MIN_DEEP_DIALOGUE_TURNS}회`, ready: conversation.length >= MIN_DEEP_DIALOGUE_TURNS },
@@ -156,11 +241,11 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
     const payload: Record<string, unknown> = {}
     if (stage.id === 'investigation') {
       const recordedConversation = conversation.length > 0 ? conversation : [{ turn_no: 1, question: prompt, response: externalResponse, provider_label: externalModel, model: externalModel, usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, keywords: matchedTerms, phase: { id: currentPhase.id, label: currentPhase.label, goal: currentPhase.goal } }]
-      Object.assign(payload, { prompt, human_check: humanCheck, llm_response: externalResponse, llm_model: externalModel, ai_conversation: recordedConversation, dataset_downloaded: datasetDownloaded })
+      Object.assign(payload, { prompt, human_check: humanCheck, llm_response: externalResponse, llm_model: externalModel, ai_conversation: recordedConversation, dataset_downloaded: datasetDownloaded,
+        conclusion: { culprit_tool: culpritTool, region, onset_lot: onsetLot, missing_rows: missingRows, unit_error_rows: unitErrorRows, duplicate_rows: duplicateRows, decoy_reason: decoyReason } })
     }
     if (stage.id === 'experiment') payload.repeats = repeats
     if (stage.id === 'analysis') payload.tools = tools
-    if (stage.id === 'validation') payload.metrics = { baseline, holdout, direction }
     await onSubmit({ stage: stage.id as StageId, choice, payload })
   }
 
@@ -183,7 +268,7 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
       decide: '지금까지의 데이터와 문답을 바탕으로 우선 가설, 대조군, 판정 기준, 적용 리스크와 보류 조건을 정리해줘.',
       synthesize: '면접 PT용으로 상황, 데이터 품질, 핵심 가설, 반증 과정, 사람의 최종 판단과 한계를 STAR 구조로 요약해줘.',
     }
-    setPrompt(`[문답 ${currentTurn}/15 · ${currentPhase.label}]\n[핵심 키워드] ${selectedTerms.join(', ')}\n[데이터 연결] 이 사이트가 현재 세션의 서버 CSV 원문 42행과 통계 요약을 자동 첨부함. PC 다운로드 경로는 사용하지 말 것\n[현재 관찰] ${facts}\n[질문] ${requests[questionGoal]}\n[출력 형식] 데이터 근거 / 가설 또는 판단 / 반증 기준 / 다음 행동을 구분해 한국어로 답해줘.`)
+    setPrompt(`[문답 ${currentTurn}/15 · ${currentPhase.label}]\n[핵심 키워드] ${selectedTerms.join(', ')}\n[데이터 연결] 이 사이트가 현재 세션의 서버 CSV 원문 전체와 통계 요약을 자동 첨부함. PC 다운로드 경로는 사용하지 말 것\n[현재 관찰] ${facts}\n[질문] ${requests[questionGoal]}\n[출력 형식] 데이터 근거 / 가설 또는 판단 / 반증 기준 / 다음 행동을 구분해 한국어로 답해줘.`)
   }
 
   const loadDatasetPreview = async () => {
@@ -247,6 +332,17 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
     if (turn < 15) setPrompt(deepQuestionForTurn(turn + 1, scenario, selectedTerms))
   }
 
+  const reviewExchange = (turn: number, review: Partial<NonNullable<AIExchange['review']>>) => {
+    setConversation((current) => current.map((exchange) => exchange.turn_no === turn ? {
+      ...exchange,
+      review: { verdict: 'pending', evidence_note: '', ...exchange.review, ...review },
+    } : exchange))
+  }
+
+  const downloadCurrentNotebook = () => {
+    saveTextFile(`virtual-fab-${scenario.id}-analysis-note.md`, currentNotebookMarkdown(scenario, state, conversation, humanCheck, datasetAudit))
+  }
+
   return (
     <form className="decision-panel" onSubmit={submit}>
       <div className="stage-heading"><span>{String(state.stage_index + 1).padStart(2, '0')}</span><h2>{stage.label}</h2></div>
@@ -258,8 +354,9 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
           <div><b>STEP 1 · 서버 데이터 불러오기</b><p>3개 Lot의 위치·Tool·결측 플래그를 화면 표로 먼저 확인해. 필요할 때만 CSV 파일로 저장하면 돼.</p></div>
           <button type="button" onClick={loadDatasetPreview} disabled={datasetBusy}>{datasetBusy ? '서버 데이터 불러오는 중…' : datasetPreview ? '서버 CSV 다시 불러오기' : '서버 CSV 불러오기·미리보기'}</button>
           <small>{datasetPreview ? `미리보기 완료 · ${datasetPreview.rows.length}행 × ${datasetPreview.headers.length}열 · scenario v${state.scenario_version} · seed ${state.seed} · AI에 동일 데이터 자동 첨부` : datasetDownloaded ? '서버 데이터가 준비되어 있어. 미리보기를 열어 직접 확인해.' : '서버 데이터를 불러와야 최종 데이터 판단을 기록할 수 있어.'}</small>
-          {datasetPreview && <section className="dataset-preview" aria-labelledby="dataset-preview-title"><header><div><b id="dataset-preview-title">CSV DATA PREVIEW · {scenario.process}</b><span>{datasetPreview.rows.length} rows · {datasetPreview.headers.length} columns</span></div><button type="button" className="save-csv" onClick={saveDatasetFile}>CSV 파일로 저장</button></header><div className="dataset-table-scroll"><table><caption>{scenario.process} 현재 세션의 합성 CSV 전체 데이터</caption><thead><tr>{datasetPreview.headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{datasetPreview.rows.map((row, rowIndex) => <tr key={`${row[2]}-${row[5]}-${rowIndex}`}>{row.map((value, columnIndex) => <td key={`${columnIndex}-${value}`}>{value}</td>)}</tr>)}</tbody></table></div></section>}
-          {datasetDownloaded && <div className="dataset-ai-note" role="status"><b>AI 데이터 자동 연결됨</b><p>브라우저 보안상 PC의 Downloads 폴더 경로는 찾거나 읽지 않아. 대신 사이트가 아래 서버 데이터 경로에서 동일 seed의 CSV를 확인하고, 원문 42행과 통계 요약을 Gemini 요청에 직접 넣어.</p><code>{datasetSourcePath}</code><small>`C:\Users\…\파일.csv` 경로를 질문에 붙일 필요가 없어.</small></div>}
+          {datasetPreview && <section className="dataset-preview" aria-labelledby="dataset-preview-title"><header><div><b id="dataset-preview-title">CSV DATA PREVIEW · {scenario.process}</b><span>{datasetPreview.rows.length} rows · {datasetPreview.headers.length} columns · 화면은 첫 200행</span></div><button type="button" className="save-csv" onClick={saveDatasetFile}>CSV 파일로 저장</button></header><div className="dataset-table-scroll"><table><caption>{scenario.process} 현재 세션 합성 CSV의 첫 200행 미리보기</caption><thead><tr>{datasetPreview.headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead><tbody>{datasetPreview.rows.slice(0, 200).map((row, rowIndex) => <tr key={`${row[2]}-${row[5]}-${rowIndex}`}>{row.map((value, columnIndex) => <td key={`${columnIndex}-${value}`}>{value}</td>)}</tr>)}</tbody></table></div></section>}
+          {groupedPreview.length > 0 && <section className="grouping-lab" aria-label="합성 데이터 그룹 집계"><header><b>GROUP ANALYSIS</b><span>정답키와 분리된 브라우저 집계</span></header><div className="metric-grid"><label>그룹 축<select value={groupAxis} onChange={(event) => setGroupAxis(event.target.value)}><option value="radius_bin">radius_mm bin</option><option value="tool_id">Tool</option><option value="lot_id">Lot</option><option value="slot">Slot</option><option value="measured_at">시간</option></select></label><label>집계<select value={aggregation} onChange={(event) => setAggregation(event.target.value)}><option value="mean">mean</option><option value="median">median</option><option value="std">std</option><option value="p95">p95</option><option value="count">count</option></select></label></div><div className="group-results">{groupedPreview.slice(0, 16).map((item) => <div key={item.label}><span>{item.label}</span><b>{item.value}</b><small>n={item.count}</small></div>)}</div><DataEvidenceVisualizer results={groupedPreview} aggregation={aggregation} audit={datasetAudit}/></section>}
+          {datasetDownloaded && <div className="dataset-ai-note" role="status"><b>AI 데이터 자동 연결됨</b><p>브라우저 보안상 PC의 Downloads 폴더 경로는 찾거나 읽지 않아. 대신 사이트가 아래 서버 데이터 경로에서 동일 seed의 CSV를 확인하고, 원문 전체와 통계 요약을 AI 요청에 직접 넣어.</p><code>{datasetSourcePath}</code><small>`C:\Users\…\파일.csv` 경로를 질문에 붙일 필요가 없어.</small></div>}
           {datasetError && <p className="inline-error" role="alert">{datasetError}</p>}
         </section>
         <div className="checklist"><span>결측·중복·단위</span><span>설비·Lot 편중</span><span>공간·조건별 분포</span><span>Train–Holdout 분리</span></div>
@@ -272,7 +369,7 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
           <p className={`prompt-quality ${matchedTerms.length > 0 ? 'ready' : ''}`}>{matchedTerms.length > 0 ? `전송 준비 · 포함 키워드: ${matchedTerms.join(', ')}` : '질문에 공정 핵심 키워드를 1개 이상 포함해야 해.'}</p>
           <p className="keyword-sources">용어 참고: {scenario.keyword_sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.label}</a>)}</p>
         </section>
-        {conversation.length > 0 && <section className="ai-dialogue" aria-label="AI 문답 기록"><header><b>STEP 2 · AI 문답 기록</b><span>{conversation.length}/15회</span></header>{conversation.map((exchange) => <article key={exchange.turn_no}><div><b>Q{exchange.turn_no} · {exchange.phase?.label ?? '문답'}</b><p>{exchange.question}</p><small>{exchange.keywords?.join(' · ') || '키워드 기록 없음'}</small></div><div><b>{exchange.provider_label}</b><p>{exchange.response}</p><small>{exchange.model} · {tokenSummary(exchange.usage)}</small></div></article>)}</section>}
+        {conversation.length > 0 && <DialogueEvidenceBoard conversation={conversation} onReview={reviewExchange} onDownload={downloadCurrentNotebook}/>}
         <label>AI에게 물어볼 다음 질문<textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="예: CSV의 결측을 처리한 뒤 Lot·Tool·위치 효과를 어떤 순서로 비교해야 해?" /></label>
         <PersonalAIConnector sessionId={state.id} prompt={prompt} promptReady={matchedTerms.length > 0} callsUsed={state.llm_call_count} conversation={conversation} onPromptChange={setPrompt} onResult={receiveAIResult}/>
         <section className={`ai-response-editor ${externalResponse ? 'has-response' : ''}`} aria-labelledby="ai-response-title">
@@ -285,6 +382,7 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
         <button type="button" className="prompt-copy secondary full-width-action" onClick={copyPrompt} disabled={prompt.length < 10 || matchedTerms.length === 0}>개인 키 없이 외부 AI용 질문 복사</button>
         {copyStatus && <p className="copy-status" role="status">{copyStatus}</p>}
         <label>AI 문답을 검증한 내 판단<textarea value={humanCheck} onChange={(e) => setHumanCheck(e.target.value)} placeholder="데이터의 어떤 열·분포·결측과 대조했고 무엇을 채택·수정·기각했는지 적어." /></label>
+        {scenario.id === 'photo-cd-drift' && <section className="conclusion-form"><header><b>정답키 서버 채점용 결론</b><span>정답값은 브라우저로 전송되지 않아.</span></header><div className="metric-grid"><label>원인 Tool<select value={culpritTool} onChange={(e) => setCulpritTool(e.target.value)}><option value="">선택</option><option>PHOTO_A</option><option>PHOTO_B</option><option>PHOTO_C</option></select></label><label>이상 영역<select value={region} onChange={(e) => setRegion(e.target.value)}><option value="">선택</option><option value="center">center</option><option value="edge">edge</option><option value="all">전면</option></select></label><label>Drift 시작 Lot<input value={onsetLot} onChange={(e) => setOnsetLot(e.target.value)} placeholder="LOT-005" /></label><label>결측 행 수<input type="number" min="0" value={missingRows} onChange={(e) => setMissingRows(e.target.value)} /></label><label>단위오류 행 수<input type="number" min="0" value={unitErrorRows} onChange={(e) => setUnitErrorRows(e.target.value)} /></label><label>중복 행 수<input type="number" min="0" value={duplicateRows} onChange={(e) => setDuplicateRows(e.target.value)} /></label></div><label>미끼 Tool 배제 근거<textarea value={decoyReason} onChange={(e) => setDecoyReason(e.target.value)} placeholder="Tool 이름과 전면 균일 shift가 결함과 무관한 이유를 기록해." /></label></section>}
         <div className="choice-grid"><ChoiceButton value="distribution" selected={choice} onClick={setChoice}>분포·품질 근거로 판단</ChoiceButton><ChoiceButton value="mean_only" selected={choice} onClick={setChoice}>전체 평균으로 판단</ChoiceButton></div>
         <p className="field-note">최소 8회의 CSV 수치 분석·가설·반증·판단 문답을 완료해야 다음 단계로 갈 수 있어. 전체 질문·응답은 최종 PT에서 2회당 한 장으로 보존돼.</p>
       </>}
@@ -294,13 +392,18 @@ function DecisionPanel({ scenario, state, onSubmit, busy }: { scenario: Scenario
         <p className="field-note">합성 실험의 판정 기준을 먼저 고정한 뒤 Holdout을 연다.</p>
       </>}
       {stage.id === 'analysis' && <>
-        <div className="tool-grid">{Object.entries(scenario.tools).map(([id, tool]) => <label className={`tool ${tools.includes(id) ? 'selected' : ''}`} key={id}><input type="checkbox" checked={tools.includes(id)} onChange={() => setTools((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}/><b>{tool.label}</b><span>{tool.kind} · {tool.cost}C · {tool.time}m{tool.destructive ? ' · 파괴' : ''}</span></label>)}</div>
-        <div className="resource-preview" aria-live="polite"><ResourceMeter label="선택 비용" value={totals.cost} limit={state.budget} unit="C"/><ResourceMeter label="소요 시간" value={totals.time} limit={state.time_left} unit="m"/></div>
+        <div className="tool-grid">{Object.entries(scenario.tools).map(([id, tool]) => <label className={`tool ${tools.includes(id) ? 'selected' : ''}`} key={id}><input type="checkbox" checked={tools.includes(id)} onChange={() => setTools((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}/><b>{tool.label}</b><span>{tool.kind} · {tool.cost}C · {tool.time}m · 정보 {tool.information ?? TOOL_INFORMATION_DEFAULTS[id] ?? 0}{tool.destructive ? ' · 파괴' : ''}</span></label>)}</div>
+        <div className="resource-preview" aria-live="polite"><ResourceMeter label="선택 비용" value={tradeoff.cost} limit={state.budget} unit="C"/><ResourceMeter label="소요 시간" value={tradeoff.time} limit={state.time_left} unit="m"/></div>
+        <section className={`tradeoff-panel ${tradeoff.resourceEfficient ? 'efficient' : 'warning'}`} aria-label="예산 시간 신뢰도 비교" aria-live="polite">
+          <header><b>RESOURCE × EVIDENCE</b><span>{tradeoff.resourceEfficient ? '효율 구간' : tradeoff.withinLimits ? '조합 재검토' : '자원 한도 초과'}</span></header>
+          <div className="tradeoff-metrics"><div><span>필수 정보영역</span><b>{tradeoff.coveredKinds}/{tradeoff.requiredKinds}</b></div><div><span>예상 증거 신뢰도</span><b>{tradeoff.confidence}%</b></div><div><span>자원 효율</span><b>{tradeoff.efficiency}</b></div><div><span>파괴 분석</span><b>{tradeoff.destructiveCount}개</b></div></div>
+          <p>최소 완전조합: {tradeoff.benchmark.ids.map((id) => scenario.tools[id].label).join(' + ') || '현재 자원으로 구성 불가'} · {tradeoff.benchmark.cost}C · {tradeoff.benchmark.time}m</p>
+          <small>현재 조합은 최소안 대비 비용 {tradeoff.cost - tradeoff.benchmark.cost >= 0 ? '+' : ''}{tradeoff.cost - tradeoff.benchmark.cost}C, 시간 {tradeoff.time - tradeoff.benchmark.time >= 0 ? '+' : ''}{tradeoff.time - tradeoff.benchmark.time}m. 신뢰도는 교육용 정보영역 충족도와 도구 정보가치로 계산한 비교 지표이며 실제 측정 정확도가 아니다.</small>
+        </section>
         <input type="hidden" value="select" /><button type="button" className="choice selected analysis-choice" onClick={() => setChoice('select')}>이 분석 조합으로 증거 수집</button>
       </>}
       {stage.id === 'validation' && <>
-        <div className="metric-grid"><label>Baseline<input inputMode="decimal" value={baseline} onChange={(e) => setBaseline(e.target.value)} /></label><label>Holdout<input inputMode="decimal" value={holdout} onChange={(e) => setHoldout(e.target.value)} /></label><label>개선 방향<select value={direction} onChange={(e) => setDirection(e.target.value)}><option value="higher">높을수록 개선</option><option value="lower">낮을수록 개선</option></select></label></div>
-        {validationPreview && <div className={`validation-preview ${validationPreview.improved ? 'improved' : 'degraded'}`} role="status"><span>LIVE HOLDOUT PREVIEW</span><b>{validationPreview.delta >= 0 ? '+' : ''}{validationPreview.delta.toFixed(3)}</b><p>{validationPreview.improved ? '설정한 개선 방향과 일치해. 적용 범위를 선택해.' : '개선 방향과 불일치해. 조치보다 가설·실험을 다시 의심해야 해.'}</p></div>}
+        {state.validation_metrics && <div className={`validation-preview ${state.validation_metrics.improved ? 'improved' : 'degraded'}`} role="status"><span>SERVER HOLDOUT · {state.validation_metrics.direction === 'lower' ? '낮을수록 개선' : '높을수록 개선'}</span><b>{state.validation_metrics.baseline} → {state.validation_metrics.holdout}</b><p>{state.validation_metrics.improved ? '서버가 분리한 Holdout에서 개선됐어. 적용 범위를 선택해.' : 'Holdout에서 개선되지 않았어. 가설·실험을 다시 의심해야 해.'}</p></div>}
         <div className="choice-list"><ChoiceButton value="controlled" selected={choice} onClick={setChoice}>한정 적용 + 모니터링</ChoiceButton><ChoiceButton value="direct" selected={choice} onClick={setChoice}>전체 Lot 즉시 적용</ChoiceButton><ChoiceButton value="release" selected={choice} onClick={setChoice}>검증 없이 해제</ChoiceButton></div>
       </>}
       {stage.id === 'investigation' && <section className={`next-step-gate ${investigationMissingCount === 0 ? 'ready' : ''}`} aria-labelledby="next-step-gate-title">
@@ -320,6 +423,18 @@ function ResultPanel({ scenario, session, busy, onRestart }: { scenario: Scenari
   const [opinion, setOpinion] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const [reportError, setReportError] = useState('')
+  const [outcomes, setOutcomes] = useState<CompetencyEvidence | null>(null)
+  const [outcomesError, setOutcomesError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    setOutcomes(null)
+    setOutcomesError('')
+    api.outcomes(session.id)
+      .then((result) => { if (active) setOutcomes(result) })
+      .catch(() => { if (active) setOutcomesError('역량 증거를 불러오지 못했어. 최종 기록은 그대로 보존돼.') })
+    return () => { active = false }
+  }, [session.id, session.history.length])
 
   const downloadReport = async () => {
     setReportBusy(true); setReportError('')
@@ -333,10 +448,36 @@ function ResultPanel({ scenario, session, busy, onRestart }: { scenario: Scenari
     finally { setReportBusy(false) }
   }
 
+  const downloadNotebook = () => saveTextFile(`virtual-fab-${scenario.id}-final-record.md`, completedNotebookMarkdown(scenario, session, outcomes))
+
   return <div className="result-panel">
     <h1>{session.verdict}</h1>
     <p>점수 {session.score}/100 · 남은 예산 {session.budget} · 남은 시간 {session.time_left}분</p>
     <p className="run-metadata">scenario v{session.scenario_version} · seed {session.seed}</p>
+    <section className="competency-evidence" aria-labelledby="competency-evidence-title">
+      <header>
+        <div><span>LEARNING EVIDENCE · SERVER DERIVED</span><h2 id="competency-evidence-title">역량 증거 리포트</h2></div>
+        {outcomes && <strong>{outcomes.total}<small>/ {outcomes.max_total}</small></strong>}
+      </header>
+      {!outcomes && !outcomesError && <p className="competency-loading">판단 기록을 교육 역량으로 재구성하는 중…</p>}
+      {outcomesError && <p className="inline-error">{outcomesError}</p>}
+      {outcomes && <>
+        <div className="competency-dimensions">{outcomes.dimensions.map((item) => (
+          <article key={item.id}>
+            <div><b>{item.label}</b><span>{item.score}/{item.max_score}</span></div>
+            <div className="competency-track"><i style={{ '--competency-ratio': item.max_score ? item.score / item.max_score : 0 } as CSSProperties}/></div>
+            <small>{item.evidence}</small>
+          </article>
+        ))}</div>
+        <div className="ai-review-proof">
+          <div><span>AI 문답</span><b>{outcomes.ai_review.turns}회</b></div>
+          <div><span>사람 판정</span><b>{outcomes.ai_review.reviewed}회</b></div>
+          <div><span>근거 메모</span><b>{outcomes.ai_review.evidence_notes}개</b></div>
+          <p>채택 {outcomes.ai_review.accept} · 수정 {outcomes.ai_review.revise} · 기각 {outcomes.ai_review.reject} · 미검토 {outcomes.ai_review.pending}</p>
+        </div>
+        <p className="competency-limit">{outcomes.limitations.join(' ')}</p>
+      </>}
+    </section>
     <h2>Evidence trail</h2>
     <ol>{session.history.map((item, index) => (
       <li key={`${item.stage}-${index}`}>
@@ -350,7 +491,7 @@ function ResultPanel({ scenario, session, busy, onRestart }: { scenario: Scenari
       <label>내 판단·배운 점·한계<textarea value={opinion} onChange={(event) => setOpinion(event.target.value)} placeholder="왜 이 경로를 선택했는지, AI 의견 중 무엇을 수정했는지, 추가 검증할 한계를 10자 이상 적어봐." /></label>
       <p className={`report-requirement ${opinion.trim().length >= 10 ? 'ready' : ''}`}>{opinion.trim().length >= 10 ? '다운로드 준비 완료' : `의견을 ${10 - opinion.trim().length}자 더 입력하면 다운로드할 수 있어.`}</p>
       <p className="field-note">실제 합성 데이터 통계와 전체 AI 문답을 2회당 한 장으로 나누는 심층 HTML PT를 생성한다. 문답 횟수에 따라 슬라이드 수가 자동으로 늘어나며 인터넷 없이 실행하고 PDF 인쇄도 가능해.</p>
-      <button className="download-report" onClick={downloadReport} disabled={reportBusy || opinion.trim().length < 10}>{reportBusy ? 'STAR 면접 자료 생성 중…' : 'HTML 면접 PT 슬라이드 다운로드'}</button>
+      <div className="report-download-actions"><button type="button" className="secondary" onClick={downloadNotebook}>전체 조사 기록 Markdown</button><button className="download-report" onClick={downloadReport} disabled={reportBusy || opinion.trim().length < 10}>{reportBusy ? 'STAR 면접 자료 생성 중…' : 'HTML 면접 PT 슬라이드 다운로드'}</button></div>
       {reportError && <p className="inline-error">{reportError}</p>}
     </section>
     <p className="limit-note">이 결과는 교육용 합성 입력에 대한 시나리오 판정이며 실제 공정 인과관계나 현장 성과를 보장하지 않아.</p>

@@ -21,9 +21,19 @@ def new_seeded_session(seed: int, scenario_id: str = "photo-cd-drift") -> dict:
 
 
 def decide(session_id: str, stage: str, choice: str, payload=None):
+    payload = payload or {}
+    if stage == "investigation" and "conclusion" not in payload:
+        state = main.load_session(session_id)
+        assert state is not None
+        _, key = main.photo_dataset(state.seed)
+        payload["conclusion"] = {
+            "culprit_tool": key["culprit_tool"], "region": "edge", "onset_lot": key["onset_lot"],
+            **key["traps"],
+            "decoy_reason": f"{key['decoy_tool']}는 전면 균일 shift라 결함과 무관하다.",
+        }
     return client.post(
         f"/api/sessions/{session_id}/decisions",
-        json={"stage": stage, "choice": choice, "payload": payload or {}},
+        json={"stage": stage, "choice": choice, "payload": payload},
     )
 
 
@@ -60,6 +70,7 @@ def investigation_payload():
             "provider_label": "Google Gemini",
             "model": "gemini-3.5-flash",
             "usage": {"prompt_tokens": 20, "completion_tokens": 20, "total_tokens": 40},
+            "review": {"verdict": "accept" if index == 0 else "pending", "evidence_note": "radius bin 통계와 직접 대조" if index == 0 else ""},
         } for index, question in enumerate(questions)],
     }
 
@@ -68,7 +79,9 @@ def test_controlled_path_solves_scenario():
     session_id = new_session()
     assert decide(session_id, "incident", "hold").status_code == 200
     assert client.get(f"/api/sessions/{session_id}/dataset.csv").status_code == 200
-    assert decide(session_id, "investigation", "distribution", investigation_payload()).status_code == 200
+    investigation = decide(session_id, "investigation", "distribution", investigation_payload())
+    assert investigation.status_code == 200
+    assert investigation.json()["state"]["ai_conversation"][0]["review"] == {"verdict": "accept", "evidence_note": "radius bin 통계와 직접 대조"}
     assert decide(session_id, "experiment", "screening", {"repeats": 3}).status_code == 200
     analysis = decide(session_id, "analysis", "select", {"tools": ["optical", "sem"]})
     assert analysis.status_code == 200
@@ -77,6 +90,17 @@ def test_controlled_path_solves_scenario():
     state = result.json()["state"]
     assert state["completed"] is True
     assert state["verdict"] == "시나리오 해결 · 입력 증거 기준"
+    outcomes = client.get(f"/api/sessions/{session_id}/outcomes")
+    assert outcomes.status_code == 200
+    evidence = outcomes.json()
+    assert evidence["status"] == "complete"
+    assert evidence["total"] == 100
+    assert [item["score"] for item in evidence["dimensions"]] == [20, 30, 20, 15, 15]
+    assert evidence["ai_review"] == {
+        "turns": 8, "reviewed": 1, "evidence_notes": 1,
+        "accept": 1, "revise": 0, "reject": 0, "pending": 7,
+    }
+    assert "학습 향상 점수가 아닙니다" in evidence["limitations"][1]
     report = client.post(
         f"/api/sessions/{session_id}/report",
         json={"opinion": "평균값보다 위치별 분포를 먼저 보고 AI 제안을 측정 원리와 대조해야 한다고 판단했다.", "presenter": "테스트 지원자", "target_role": "공정기술"},
@@ -90,6 +114,7 @@ def test_controlled_path_solves_scenario():
     assert "CENTER와 EDGE 평균 차이" in report.text
     assert "PROCESS KEYWORD MAP" in report.text
     assert "DATA EVIDENCE · SYNTHETIC CSV" in report.text
+    assert "사람 검증 · 미검토" in report.text
     assert "AI DEEP DIALOGUE · Q7–Q8" in report.text
     assert "EDGE−CENTER" in report.text
     assert "CD" in report.text
@@ -120,6 +145,18 @@ def test_rewind_restores_stage_state_and_discards_later_decisions():
     assert "이후 판단 1개" in response.json()["feedback"]
 
 
+def test_outcomes_are_partial_server_evidence_before_completion():
+    session_id = new_session()
+    assert decide(session_id, "incident", "hold").status_code == 200
+    response = client.get(f"/api/sessions/{session_id}/outcomes")
+    assert response.status_code == 200
+    evidence = response.json()
+    assert evidence["status"] == "in_progress"
+    assert evidence["total"] == 20
+    assert evidence["dimensions"][0]["evidence"].startswith("평균만으로")
+    assert all(item["score"] == 0 for item in evidence["dimensions"][1:])
+
+
 def test_rewind_rejects_current_or_future_stage():
     session_id = new_session()
     decide(session_id, "incident", "hold")
@@ -148,8 +185,12 @@ def test_catalog_and_all_scenarios_create_independent_sessions():
         dataset = client.get(f"/api/sessions/{session_id}/dataset.csv")
         assert dataset.status_code == 200
         csv_lines = dataset.text.removeprefix("\ufeff").strip().splitlines()
-        assert len(csv_lines) == 43
-        assert len(csv_lines[0].split(",")) == 9
+        if item["id"] == "photo-cd-drift":
+            assert len(csv_lines) > 2900
+            assert csv_lines[0] == "lot_id,wafer_id,tool_id,slot,point_id,radius_mm,angle_deg,cd_nm,defect_count,measured_at"
+        else:
+            assert len(csv_lines) == 43
+            assert len(csv_lines[0].split(",")) == 9
         restored = main.load_session(session_id)
         assert restored is not None and restored.dataset_downloaded is True
         _, messages = main.coach_messages(
@@ -157,7 +198,11 @@ def test_catalog_and_all_scenarios_create_independent_sessions():
             main.SCENARIOS[item["id"]],
             restored,
         )
-        assert messages[0]["content"].count("SYN-") == 42
+        if item["id"] == "photo-cd-drift":
+            assert "LOT-" in messages[0]["content"]
+            assert "radius_mm" in messages[0]["content"]
+        else:
+            assert messages[0]["content"].count("SYN-") == 42
         assert "[서버 첨부 CSV 원문" in messages[0]["content"]
 
 
@@ -169,6 +214,92 @@ def test_analysis_budget_is_enforced():
     decide(session_id, "experiment", "screening", {"repeats": 3})
     response = decide(session_id, "analysis", "select", {"tools": ["tem", "fib", "xps"]})
     assert response.status_code == 422
+
+
+def test_analysis_tradeoff_rewards_complete_low_resource_evidence():
+    tradeoff = main.analysis_tradeoff(["optical", "sem"], main.PHOTO_SCENARIO, 80, 60)
+    assert tradeoff["coverage"] is True
+    assert tradeoff["resource_efficient"] is True
+    assert tradeoff["confidence"] == 87
+    assert tradeoff["benchmark"] == {
+        "tools": ["optical", "sem"], "cost": 19, "time": 13, "cost_delta": 0, "time_delta": 0,
+    }
+
+
+def test_analysis_tradeoff_exposes_missing_coverage_and_expensive_delta():
+    incomplete = main.analysis_tradeoff(["tem"], main.PHOTO_SCENARIO, 80, 60)
+    assert incomplete["coverage"] is False
+    assert incomplete["covered_kinds"] == 1
+    assert incomplete["required_kinds"] == 2
+    expensive = main.analysis_tradeoff(["ellipsometry", "tem"], main.PHOTO_SCENARIO, 80, 60)
+    assert expensive["coverage"] is True
+    assert expensive["resource_efficient"] is False
+    assert expensive["benchmark"]["cost_delta"] == 39
+    assert expensive["benchmark"]["time_delta"] == 32
+
+
+def test_analysis_rejects_duplicate_tools_and_records_tradeoff():
+    session_id = new_session()
+    decide(session_id, "incident", "hold")
+    client.get(f"/api/sessions/{session_id}/dataset.csv")
+    decide(session_id, "investigation", "distribution", investigation_payload())
+    decide(session_id, "experiment", "screening", {"repeats": 3})
+    duplicate = decide(session_id, "analysis", "select", {"tools": ["sem", "sem"]})
+    assert duplicate.status_code == 422
+    result = decide(session_id, "analysis", "select", {"tools": ["optical", "sem"]}).json()
+    record = result["state"]["history"][-1]
+    assert record["confidence"] == 87
+    assert record["efficiency"] == 2.72
+    assert record["resource_efficient"] is True
+    assert "예상 증거 신뢰도 87%" in result["feedback"]
+
+
+def test_photo_key_scoring_and_server_holdout_are_private_and_deterministic():
+    state = new_seeded_session(20260814)
+    session_id = state["id"]
+    decide(session_id, "incident", "hold")
+    csv_response = client.get(f"/api/sessions/{session_id}/dataset.csv")
+    assert "culprit_tool" not in csv_response.text
+    payload = investigation_payload()
+    payload["conclusion"] = {
+        "culprit_tool": "PHOTO_C", "region": "edge", "onset_lot": "LOT-005",
+        "missing_rows": 99, "unit_error_rows": 44, "duplicate_rows": 29,
+        "decoy_reason": "PHOTO_B는 전면 균일 shift이며 결함과 무관하다.",
+    }
+    investigation = decide(session_id, "investigation", "distribution", payload)
+    assert investigation.status_code == 200
+    assert investigation.json()["state"]["history"][-1]["evidence_score"] == 100
+    decide(session_id, "experiment", "screening", {"repeats": 3})
+    analysis = decide(session_id, "analysis", "select", {"tools": ["optical", "sem"]})
+    metrics = analysis.json()["state"]["validation_metrics"]
+    assert metrics == {"baseline": 3.2, "holdout": 0.9, "direction": "lower", "improved": True, "source": "server_holdout"}
+    result = decide(session_id, "validation", "controlled", {"metrics": {"baseline": 0, "holdout": 999, "direction": "higher"}})
+    assert result.json()["state"]["history"][-1]["metrics"] == metrics
+
+
+def test_photo_decoy_tool_zeroes_evidence_score():
+    state = new_seeded_session(20260814)
+    session_id = state["id"]
+    decide(session_id, "incident", "hold")
+    client.get(f"/api/sessions/{session_id}/dataset.csv")
+    payload = investigation_payload()
+    payload["conclusion"] = {
+        "culprit_tool": "PHOTO_B", "region": "edge", "onset_lot": "LOT-005",
+        "missing_rows": 99, "unit_error_rows": 44, "duplicate_rows": 29,
+        "decoy_reason": "PHOTO_B를 원인으로 선택",
+    }
+    result = decide(session_id, "investigation", "distribution", payload)
+    assert result.status_code == 200
+    assert result.json()["state"]["history"][-1]["evidence_score"] == 0
+
+
+def test_photo_statistics_include_radius_bins_and_quality_traps():
+    state = main.SessionState(id="stats", scenario_id="photo-cd-drift", scenario_version=main.PHOTO_SCENARIO["version"], seed=20260814)
+    stats = main.dataset_statistics(state, main.PHOTO_SCENARIO)
+    assert stats["missing"] == 99
+    assert stats["unit_errors"] == 44
+    assert stats["duplicates"] == 29
+    assert set(stats["radius_bins"]) == {"CENTER 0–44mm", "MIDDLE 45–109mm", "EDGE 110–150mm"}
 
 
 def test_out_of_order_decision_is_rejected():
@@ -352,7 +483,7 @@ def test_dataset_download_is_reproducible_and_required_for_investigation():
     second_csv = client.get(f"/api/sessions/{second['id']}/dataset.csv")
     assert first_csv.status_code == second_csv.status_code == 200
     assert first_csv.text == second_csv.text
-    assert "lot_id,tool_id,wafer_zone" in first_csv.text
+    assert "lot_id,wafer_id,tool_id,slot,point_id,radius_mm" in first_csv.text
     completed = decide(first["id"], "investigation", "distribution", investigation_payload())
     assert completed.status_code == 200
     assert completed.json()["state"]["dataset_downloaded"] is True
@@ -364,10 +495,10 @@ def test_follow_up_prompt_contains_dataset_and_previous_exchange():
     state.ai_conversation = [{"question": "결측을 먼저 어떻게 처리해?", "response": "결측 원인을 분리하고 민감도 분석을 하세요."}]
     system, messages = main.coach_messages("그다음 Tool 편중은 어떻게 확인해?", main.PHOTO_SCENARIO, state)
     assert "합성 데이터" in system
-    assert "다운로드 데이터는 42행" in messages[0]["content"]
+    assert "다운로드 데이터는 2969행" in messages[0]["content"]
     assert "[서버 첨부 CSV 원문" in messages[0]["content"]
-    assert "scenario_version,seed,lot_id,tool_id,wafer_zone,position_index,metric_value,unit,missing_flag" in messages[0]["content"]
-    assert messages[0]["content"].count("SYN-") == 42
+    assert "lot_id,wafer_id,tool_id,slot,point_id,radius_mm,angle_deg,cd_nm,defect_count,measured_at" in messages[0]["content"]
+    assert "LOT-" in messages[0]["content"]
     assert messages[-3]["content"] == "결측을 먼저 어떻게 처리해?"
     assert messages[-2]["role"] == "assistant"
     assert messages[-1]["content"] == "그다음 Tool 편중은 어떻게 확인해?"

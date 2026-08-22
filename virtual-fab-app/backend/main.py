@@ -5,7 +5,9 @@ import csv
 from copy import deepcopy
 import hashlib
 import html
+import importlib.util
 import io
+from itertools import combinations
 import json
 import os
 import re
@@ -26,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, SecretStr
 
 APP_DIR = Path(__file__).resolve().parents[1]
+ASSET_DIR = APP_DIR.parent / "vfab_assets"
 DIST_DIR = APP_DIR / "dist"
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
@@ -41,14 +44,14 @@ AI_PROVIDERS = {"openai": "OpenAI", "anthropic": "Anthropic", "gemini": "Google 
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 
 TOOLS: dict[str, dict[str, Any]] = {
-    "optical": {"label": "광학현미경 · Optical CD", "kind": "dimension", "cost": 4, "time": 3, "destructive": False},
-    "ellipsometry": {"label": "Ellipsometry", "kind": "dimension", "cost": 8, "time": 5, "destructive": False},
-    "sem": {"label": "SEM", "kind": "structure", "cost": 15, "time": 10, "destructive": False},
-    "fib": {"label": "FIB–SEM", "kind": "structure", "cost": 35, "time": 25, "destructive": True},
-    "tem": {"label": "TEM", "kind": "structure", "cost": 50, "time": 40, "destructive": True},
-    "edx": {"label": "EDX", "kind": "chemistry", "cost": 18, "time": 15, "destructive": False},
-    "xps": {"label": "XPS", "kind": "chemistry", "cost": 25, "time": 20, "destructive": False},
-    "electrical": {"label": "I–V · Vth", "kind": "electrical", "cost": 10, "time": 8, "destructive": False},
+    "optical": {"label": "광학현미경 · Optical CD", "kind": "dimension", "cost": 4, "time": 3, "information": 12, "destructive": False},
+    "ellipsometry": {"label": "Ellipsometry", "kind": "dimension", "cost": 8, "time": 5, "information": 18, "destructive": False},
+    "sem": {"label": "SEM", "kind": "structure", "cost": 15, "time": 10, "information": 22, "destructive": False},
+    "fib": {"label": "FIB–SEM", "kind": "structure", "cost": 35, "time": 25, "information": 28, "destructive": True},
+    "tem": {"label": "TEM", "kind": "structure", "cost": 50, "time": 40, "information": 32, "destructive": True},
+    "edx": {"label": "EDX", "kind": "chemistry", "cost": 18, "time": 15, "information": 22, "destructive": False},
+    "xps": {"label": "XPS", "kind": "chemistry", "cost": 25, "time": 20, "information": 28, "destructive": False},
+    "electrical": {"label": "I–V · Vth", "kind": "electrical", "cost": 10, "time": 8, "information": 24, "destructive": False},
 }
 
 BASE_STAGES = [
@@ -72,7 +75,7 @@ PHOTO_SCENARIO = {
     "tagline": "평균 CD는 정상인데 Edge 결함이 급증했다.",
     "skills": ["공간 분포", "DOE", "CD 계측"],
     "badge": "LIVE · 검증 완료",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "notice": "교육용 합성 시나리오이며 실제 회사 Recipe·현장 경험을 의미하지 않습니다.",
     "coach_prompt": "Photo CD edge 산포의 경쟁 가설 3개와 각 가설을 반증할 최소 증거를 제안해줘.",
     "experiment_label": "Dose·Focus·PEB Screening",
@@ -222,6 +225,66 @@ for scenario_id, scenario in SCENARIOS.items():
     scenario["keyword_sources"] = KEYWORD_SOURCES[scenario_id]
 
 
+def analysis_tradeoff(tool_ids: list[str], scenario: dict[str, Any], budget: int, time_left: int) -> dict[str, Any]:
+    """Return a deterministic, answer-key-free estimate of evidence value per resource."""
+    selected = [TOOLS[tool_id] for tool_id in tool_ids]
+    required = set(scenario["required_analysis_kinds"])
+    covered = {tool["kind"] for tool in selected} & required
+    coverage_ratio = len(covered) / len(required) if required else 1.0
+    relevant_information = sum(
+        max((tool["information"] for tool in selected if tool["kind"] == kind), default=0)
+        for kind in required
+    )
+    confidence = min(95, round(15 + 55 * coverage_ratio + min(25, relevant_information / 2)))
+    cost = sum(tool["cost"] for tool in selected)
+    duration = sum(tool["time"] for tool in selected)
+    efficiency = round(confidence / max(1, cost + duration), 2)
+
+    viable: list[tuple[int, int, int, tuple[str, ...]]] = []
+    tool_names = tuple(TOOLS)
+    for size in range(1, len(tool_names) + 1):
+        for candidate in combinations(tool_names, size):
+            candidate_tools = [TOOLS[tool_id] for tool_id in candidate]
+            if not required.issubset({tool["kind"] for tool in candidate_tools}):
+                continue
+            candidate_cost = sum(tool["cost"] for tool in candidate_tools)
+            candidate_time = sum(tool["time"] for tool in candidate_tools)
+            if candidate_cost <= budget and candidate_time <= time_left:
+                destructive_count = sum(bool(tool["destructive"]) for tool in candidate_tools)
+                viable.append((candidate_cost + candidate_time, destructive_count, size, candidate))
+    benchmark_ids = min(viable)[3] if viable else ()
+    benchmark_cost = sum(TOOLS[tool_id]["cost"] for tool_id in benchmark_ids)
+    benchmark_time = sum(TOOLS[tool_id]["time"] for tool_id in benchmark_ids)
+    coverage = required.issubset(covered)
+    within_limits = cost <= budget and duration <= time_left
+    resource_efficient = bool(
+        coverage
+        and within_limits
+        and benchmark_ids
+        and cost <= benchmark_cost * 1.5
+        and duration <= benchmark_time * 1.5
+    )
+    return {
+        "cost": cost,
+        "time": duration,
+        "confidence": confidence,
+        "efficiency": efficiency,
+        "coverage": coverage,
+        "covered_kinds": len(covered),
+        "required_kinds": len(required),
+        "within_limits": within_limits,
+        "destructive_count": sum(bool(tool["destructive"]) for tool in selected),
+        "resource_efficient": resource_efficient,
+        "benchmark": {
+            "tools": list(benchmark_ids),
+            "cost": benchmark_cost,
+            "time": benchmark_time,
+            "cost_delta": cost - benchmark_cost,
+            "time_delta": duration - benchmark_time,
+        },
+    }
+
+
 class DecisionRequest(BaseModel):
     stage: Literal["incident", "investigation", "experiment", "analysis", "validation"]
     choice: str = Field(min_length=1, max_length=80)
@@ -269,6 +332,7 @@ class SessionState(BaseModel):
     history: list[dict[str, Any]] = Field(default_factory=list)
     completed: bool = False
     verdict: str | None = None
+    validation_metrics: dict[str, Any] | None = None
 
 
 def init_db() -> None:
@@ -444,7 +508,20 @@ def check_llm_connection(provider: str, model: str, api_key: str) -> dict[str, s
     return {"status": "connected", "provider": provider, "provider_label": AI_PROVIDERS[provider], "model": resolved}
 
 
+def photo_dataset(seed: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Build data and the private key together; only rows ever leave the server."""
+    spec = importlib.util.spec_from_file_location("virtual_fab_photo_generator", ASSET_DIR / "generate_photo_cd.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("PHOTO synthetic-data generator is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.build(seed)
+
+
 def dataset_rows(state: SessionState, scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    if state.scenario_id == "photo-cd-drift":
+        rows, _ = photo_dataset(state.seed)
+        return rows
     rows: list[dict[str, Any]] = []
     bars = scenario["signal"]["bars"]
     for lot_index in range(3):
@@ -467,6 +544,13 @@ def dataset_rows(state: SessionState, scenario: dict[str, Any]) -> list[dict[str
 
 def dataset_context(state: SessionState, scenario: dict[str, Any]) -> str:
     stats = dataset_statistics(state, scenario)
+    if state.scenario_id == "photo-cd-drift":
+        return (
+            f"다운로드 데이터는 {stats['rows']}행이며 결측 {stats['missing']}행, "
+            f"단위오류 후보 {stats['unit_errors']}행, 중복 {stats['duplicates']}행이다. "
+            f"반경 bin별 유효 CD 평균은 {stats['radius_bins']}이고 Tool별 평균은 {stats['tool_summary']}이다. "
+            "열은 lot_id, wafer_id, tool_id, slot, point_id, radius_mm, angle_deg, cd_nm, defect_count, measured_at로 구성된다."
+        )
     return (
         f"다운로드 데이터는 {stats['rows']}행이며 결측 {stats['missing']}행이다. "
         f"영역별 유효 평균은 CENTER {stats['zones']['CENTER']['mean']}, MIDDLE {stats['zones']['MIDDLE']['mean']}, EDGE {stats['zones']['EDGE']['mean']}이고 "
@@ -486,6 +570,57 @@ def dataset_csv_text(state: SessionState, scenario: dict[str, Any]) -> str:
 
 def dataset_statistics(state: SessionState, scenario: dict[str, Any]) -> dict[str, Any]:
     rows = dataset_rows(state, scenario)
+    if state.scenario_id == "photo-cd-drift":
+        seen: set[tuple[Any, ...]] = set()
+        duplicates = 0
+        missing = 0
+        unit_errors = 0
+        valid: list[dict[str, Any]] = []
+        for row in rows:
+            identity = (row["wafer_id"], row["point_id"], row["measured_at"])
+            if identity in seen:
+                duplicates += 1
+            seen.add(identity)
+            if row["cd_nm"] == "":
+                missing += 1
+                continue
+            value = float(row["cd_nm"])
+            if value < 1:
+                unit_errors += 1
+                continue
+            valid.append(row)
+
+        def mean_for(items: list[dict[str, Any]]) -> float | None:
+            return round(sum(float(item["cd_nm"]) for item in items) / len(items), 3) if items else None
+
+        zone_items = {
+            "CENTER": [row for row in valid if float(row["radius_mm"]) < 45],
+            "MIDDLE": [row for row in valid if 45 <= float(row["radius_mm"]) < 110],
+            "EDGE": [row for row in valid if float(row["radius_mm"]) >= 110],
+        }
+        zones = {name: {
+            "count": len(items), "mean": mean_for(items),
+            "min": round(min(float(row["cd_nm"]) for row in items), 3) if items else None,
+            "max": round(max(float(row["cd_nm"]) for row in items), 3) if items else None,
+        } for name, items in zone_items.items()}
+        radius_bins = {
+            "CENTER 0–44mm": zones["CENTER"]["mean"],
+            "MIDDLE 45–109mm": zones["MIDDLE"]["mean"],
+            "EDGE 110–150mm": zones["EDGE"]["mean"],
+        }
+        tool_items = {tool: [row for row in valid if row["tool_id"] == tool] for tool in sorted({row["tool_id"] for row in valid})}
+        tools = {tool: {
+            "count": len(items), "mean": mean_for(items),
+            "min": round(min(float(row["cd_nm"]) for row in items), 3) if items else None,
+            "max": round(max(float(row["cd_nm"]) for row in items), 3) if items else None,
+        } for tool, items in tool_items.items()}
+        return {
+            "rows": len(rows), "valid": len(valid), "missing": missing,
+            "unit_errors": unit_errors, "duplicates": duplicates,
+            "radius_bins": radius_bins, "zones": zones, "tools": tools,
+            "edge_center_delta": round(float(zones["EDGE"]["mean"]) - float(zones["CENTER"]["mean"]), 3),
+            "tool_summary": ", ".join(f"{key} {value['mean']}" for key, value in tools.items()),
+        }
     valid = [row for row in rows if row["missing_flag"] == "N"]
 
     def grouped(field: str, ordered: list[str] | None = None) -> dict[str, dict[str, float | int | None]]:
@@ -517,6 +652,48 @@ def dataset_statistics(state: SessionState, scenario: dict[str, Any]) -> dict[st
         "edge_center_delta": delta,
         "tool_summary": ", ".join(f"{key} {value['mean']}" for key, value in tools.items()),
     }
+
+
+def score_photo_conclusion(seed: int, conclusion: Any) -> tuple[int, dict[str, bool]]:
+    if not isinstance(conclusion, dict):
+        raise HTTPException(422, "원인 Tool, 이상 영역, 시작 Lot, 데이터 품질 집계와 미끼 배제 근거를 입력하세요.")
+    _, key = photo_dataset(seed)
+    selected_tool = str(conclusion.get("culprit_tool", "")).upper()
+    if selected_tool == key["decoy_tool"]:
+        return 0, {"decoy_selected": True}
+
+    checks: dict[str, bool] = {
+        "culprit_tool": selected_tool == key["culprit_tool"],
+        "region": str(conclusion.get("region", "")).lower() == "edge",
+    }
+    try:
+        onset = int(str(conclusion.get("onset_lot", "")).split("-")[-1])
+        expected_onset = int(key["onset_lot"].split("-")[-1])
+        checks["onset_lot"] = abs(onset - expected_onset) <= 1
+    except (TypeError, ValueError):
+        checks["onset_lot"] = False
+
+    for field in ("missing_rows", "unit_error_rows", "duplicate_rows"):
+        try:
+            expected = int(key["traps"][field])
+            checks[field] = abs(int(conclusion.get(field)) - expected) <= max(1, round(expected * 0.05))
+        except (TypeError, ValueError):
+            checks[field] = False
+    reason = str(conclusion.get("decoy_reason", "")).lower()
+    checks["decoy_reason"] = key["decoy_tool"].lower() in reason and any(word in reason for word in ("균일", "전면", "결함무관", "결함 무관"))
+    weights = {"culprit_tool": 25, "region": 15, "onset_lot": 15, "missing_rows": 10, "unit_error_rows": 10, "duplicate_rows": 10, "decoy_reason": 15}
+    return sum(weights[name] for name, passed in checks.items() if passed), checks
+
+
+def server_validation_metrics(state: SessionState) -> dict[str, Any]:
+    investigation = next((item for item in state.history if item["stage"] == "investigation"), {})
+    experiment = next((item for item in state.history if item["stage"] == "experiment"), {})
+    analysis = next((item for item in state.history if item["stage"] == "analysis"), {})
+    evidence_score = int(investigation.get("evidence_score", 0))
+    controlled_evidence = evidence_score >= 70 and experiment.get("choice") == "screening" and bool(analysis.get("coverage")) and not bool(analysis.get("overanalysis"))
+    baseline = 3.2
+    holdout = 0.9 if controlled_evidence else 2.7 if evidence_score >= 45 else 3.5
+    return {"baseline": baseline, "holdout": holdout, "direction": "lower", "improved": holdout < baseline, "source": "server_holdout"}
 
 
 def question_phase(turn_no: int) -> dict[str, str]:
@@ -730,7 +907,7 @@ def build_report(state: SessionState, request: ReportRequest) -> str:
     analysis = history_by_stage.get("analysis", {})
     validation = history_by_stage.get("validation", {})
     tools = [TOOLS[item]["label"] for item in analysis.get("tools", []) if item in TOOLS]
-    metrics = validation.get("payload", {}).get("metrics", {})
+    metrics = validation.get("metrics") or validation.get("payload", {}).get("metrics", {})
     conversation = investigation.get("payload", {}).get("ai_conversation") or state.ai_conversation
     if not isinstance(conversation, list):
         conversation = []
@@ -741,6 +918,8 @@ def build_report(state: SessionState, request: ReportRequest) -> str:
     safe_model = html.escape(model_text)
     total_tokens = sum(int(exchange.get("usage", {}).get("total_tokens", 0) or 0) for exchange in conversation)
     phase_labels = list(dict.fromkeys(str(exchange.get("phase", {}).get("label", "문답")) for exchange in conversation))
+    review_labels = {"accept": "채택", "revise": "수정", "reject": "기각", "pending": "미검토"}
+    reviewed_count = sum(1 for exchange in conversation if exchange.get("review", {}).get("verdict") in {"accept", "revise", "reject"})
     safe_human_check = html.escape(str(investigation.get("payload", {}).get("human_check", "기록 없음"))).replace("\n", "<br>")
     dialogue_groups = [conversation[index:index + 2] for index in range(0, len(conversation), 2)]
     dialogue_slides = "".join(
@@ -750,7 +929,9 @@ def build_report(state: SessionState, request: ReportRequest) -> str:
         + "".join(
             f"<li><div class='turn-head'><b>Q{exchange.get('turn_no', group_index * 2 + index + 1)}</b><em>{html.escape(' · '.join(exchange.get('keywords', [])))}</em></div>"
             f"<p class='question'>{html.escape(str(exchange.get('question', ''))[:320])}</p>"
-            f"<p class='answer'>{html.escape(str(exchange.get('response', ''))[:850]).replace(chr(10), '<br>')}</p></li>"
+            f"<p class='answer'>{html.escape(str(exchange.get('response', ''))[:850]).replace(chr(10), '<br>')}</p>"
+            f"<p class='review'><b>사람 검증 · {review_labels.get(str(exchange.get('review', {}).get('verdict', 'pending')), '미검토')}</b>"
+            f"{html.escape(str(exchange.get('review', {}).get('evidence_note', '기록 없음'))[:220])}</p></li>"
             for index, exchange in enumerate(group)
         )
         + "</ol></div></section>"
@@ -797,13 +978,13 @@ def build_report(state: SessionState, request: ReportRequest) -> str:
     return f"""<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
 <title>Virtual Fab 면접 PT · {safe_presenter}</title><style>
 *{{box-sizing:border-box}}:root{{--ink:#071d24;--cyan:#00a8b5;--amber:#ffb21d;--paper:#f6f9f8}}body{{margin:0;background:var(--ink);font-family:'Malgun Gothic',sans-serif;color:var(--ink);overflow:hidden}}
-.slide{{display:none;width:100vw;height:100vh;padding:7vh 7vw;background:var(--paper);position:relative}}.slide.active{{display:grid}}h1{{font-size:clamp(42px,6vw,88px);line-height:1.04;margin:0;max-width:13ch}}h2{{font-size:clamp(32px,4vw,64px);margin:0 0 4vh}}p,li{{font-size:clamp(17px,1.7vw,28px);line-height:1.6}}.dark{{background:var(--ink);color:#effafa}}.accent{{color:var(--amber)}}.grid{{grid-template-columns:1.1fr .9fr;gap:5vw;align-items:center}}img{{width:100%;max-height:62vh;object-fit:contain}}.metric{{display:flex;gap:4vw;border-top:3px solid var(--cyan);padding-top:3vh}}.metric b{{font-size:clamp(34px,5vw,72px);display:block;color:var(--amber)}}ul{{list-style:none;padding:0}}li{{display:grid;grid-template-columns:180px 1fr;gap:24px;border-top:1px solid #aababc;padding:1.5vh 0}}blockquote{{font-size:clamp(22px,2.5vw,42px);line-height:1.5;margin:0;border-top:5px solid var(--amber);padding-top:4vh}}.label{{position:absolute;top:3vh;left:7vw;font-size:14px;letter-spacing:.12em;color:var(--cyan);font-weight:700}}.nav{{position:fixed;right:24px;bottom:20px;display:flex;gap:8px;z-index:5}}button{{border:0;padding:12px 18px;background:#fff;color:var(--ink);font-weight:700;cursor:pointer}}.counter{{position:fixed;left:24px;bottom:24px;color:#9bc0c3;z-index:5}}small{{position:absolute;bottom:3vh;left:7vw;color:#637e83}}.stat-grid{{display:grid;grid-template-columns:.9fr 1.1fr;gap:4vw;align-items:start}}.data-callout{{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:3vh;background:#9fb7ba}}.data-callout span{{padding:2vh;background:#e6f1ef}}.data-callout b{{display:block;color:#007c86;font-size:clamp(26px,3vw,52px)}}table{{width:100%;border-collapse:collapse;font-size:clamp(15px,1.35vw,22px)}}th,td{{padding:1.25vh 1vw;border-top:1px solid #9fb7ba;text-align:right}}th:first-child,td:first-child{{text-align:left}}.dialogue-slide h2{{font-size:clamp(28px,3vw,48px);margin-bottom:2vh}}.dialogue-list{{margin:0;padding:0;list-style:none}}.dialogue-list li{{display:block;padding:1.7vh 0;border-top:1px solid #9fb7ba}}.turn-head{{display:flex;align-items:center;justify-content:space-between;gap:2vw}}.turn-head b{{color:#007c86;font-size:clamp(18px,1.5vw,26px)}}.turn-head em{{color:#6a7f83;font-size:clamp(12px,1vw,17px)}}.dialogue-list p{{margin:.6vh 0 0;font-size:clamp(14px,1.15vw,20px);line-height:1.45}}.dialogue-list .question{{font-weight:700}}.dialogue-list .answer{{padding:1.1vh 1vw;color:#244950;background:#e3f1ec}}@media(max-width:760px){{.grid,.stat-grid{{grid-template-columns:1fr}}.slide{{padding:8vh 6vw;overflow:auto}}li{{grid-template-columns:1fr;gap:4px}}.data-callout{{grid-template-columns:1fr}}.turn-head{{align-items:flex-start;flex-direction:column;gap:3px}}}}@media print{{body{{overflow:visible}}.slide{{display:grid;page-break-after:always}}.nav,.counter{{display:none}}}}
+.slide{{display:none;width:100vw;height:100vh;padding:7vh 7vw;background:var(--paper);position:relative}}.slide.active{{display:grid}}h1{{font-size:clamp(42px,6vw,88px);line-height:1.04;margin:0;max-width:13ch}}h2{{font-size:clamp(32px,4vw,64px);margin:0 0 4vh}}p,li{{font-size:clamp(17px,1.7vw,28px);line-height:1.6}}.dark{{background:var(--ink);color:#effafa}}.accent{{color:var(--amber)}}.grid{{grid-template-columns:1.1fr .9fr;gap:5vw;align-items:center}}img{{width:100%;max-height:62vh;object-fit:contain}}.metric{{display:flex;gap:4vw;border-top:3px solid var(--cyan);padding-top:3vh}}.metric b{{font-size:clamp(34px,5vw,72px);display:block;color:var(--amber)}}ul{{list-style:none;padding:0}}li{{display:grid;grid-template-columns:180px 1fr;gap:24px;border-top:1px solid #aababc;padding:1.5vh 0}}blockquote{{font-size:clamp(22px,2.5vw,42px);line-height:1.5;margin:0;border-top:5px solid var(--amber);padding-top:4vh}}.label{{position:absolute;top:3vh;left:7vw;font-size:14px;letter-spacing:.12em;color:var(--cyan);font-weight:700}}.nav{{position:fixed;right:24px;bottom:20px;display:flex;gap:8px;z-index:5}}button{{border:0;padding:12px 18px;background:#fff;color:var(--ink);font-weight:700;cursor:pointer}}.counter{{position:fixed;left:24px;bottom:24px;color:#9bc0c3;z-index:5}}small{{position:absolute;bottom:3vh;left:7vw;color:#637e83}}.stat-grid{{display:grid;grid-template-columns:.9fr 1.1fr;gap:4vw;align-items:start}}.data-callout{{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:3vh;background:#9fb7ba}}.data-callout span{{padding:2vh;background:#e6f1ef}}.data-callout b{{display:block;color:#007c86;font-size:clamp(26px,3vw,52px)}}table{{width:100%;border-collapse:collapse;font-size:clamp(15px,1.35vw,22px)}}th,td{{padding:1.25vh 1vw;border-top:1px solid #9fb7ba;text-align:right}}th:first-child,td:first-child{{text-align:left}}.dialogue-slide h2{{font-size:clamp(28px,3vw,48px);margin-bottom:2vh}}.dialogue-list{{margin:0;padding:0;list-style:none}}.dialogue-list li{{display:block;padding:1.2vh 0;border-top:1px solid #9fb7ba}}.turn-head{{display:flex;align-items:center;justify-content:space-between;gap:2vw}}.turn-head b{{color:#007c86;font-size:clamp(18px,1.5vw,26px)}}.turn-head em{{color:#6a7f83;font-size:clamp(12px,1vw,17px)}}.dialogue-list p{{margin:.5vh 0 0;font-size:clamp(13px,1.05vw,18px);line-height:1.38}}.dialogue-list .question{{font-weight:700}}.dialogue-list .answer{{padding:.9vh 1vw;color:#244950;background:#e3f1ec}}.dialogue-list .review{{display:grid;grid-template-columns:180px 1fr;gap:16px;padding:.7vh 1vw;color:#315a51;background:#d8ece5}}.dialogue-list .review b{{color:#08715e}}@media(max-width:760px){{.grid,.stat-grid{{grid-template-columns:1fr}}.slide{{padding:8vh 6vw;overflow:auto}}li{{grid-template-columns:1fr;gap:4px}}.data-callout{{grid-template-columns:1fr}}.turn-head{{align-items:flex-start;flex-direction:column;gap:3px}}.dialogue-list .review{{grid-template-columns:1fr}}}}@media print{{body{{overflow:visible}}.slide{{display:grid;page-break-after:always}}.nav,.counter{{display:none}}}}
 </style></head><body>
 <section class='slide dark active'><span class='label'>VIRTUAL FAB · {safe_process} · INTERVIEW BRIEF</span><div><h1>{safe_title}</h1><p class='accent'>{safe_presenter} · {safe_role}</p><p>AI를 사용했지만 판단을 위임하지 않은 데이터 기반 문제해결 기록</p><p>scenario v{html.escape(state.scenario_version)} · seed {state.seed}</p></div><small>교육용 합성 시나리오 · 실제 회사 Recipe 또는 현장 성과가 아님</small></section>
 <section class='slide grid'><span class='label'>S · SITUATION</span><div><h2>{safe_tagline}</h2><p>{situation_facts}</p><p><b>제한:</b> {html.escape(scenario['incident']['deadline'])}</p><p><b>초기 판단:</b> {html.escape(CHOICE_LABELS.get(incident.get('choice',''), '기록 없음'))}</p></div><img src='{wafer_svg}' alt='합성 공정 이상 신호 도식'></section>
 <section class='slide'><span class='label'>DATA EVIDENCE · SYNTHETIC CSV</span><div><h2>평균보다 먼저 분포를 확인했다</h2><div class='data-callout'><span><b>{stats['rows']}</b>전체 행</span><span><b>{stats['missing']}</b>결측 행</span><span><b>{stats['edge_center_delta']}</b>EDGE−CENTER</span></div><div class='stat-grid'><table><thead><tr><th>영역</th><th>유효행</th><th>평균</th><th>범위</th></tr></thead><tbody>{zone_rows}</tbody></table><ul>{tool_rows}</ul></div></div><small>scenario v{html.escape(state.scenario_version)} · seed {state.seed}에서 재현되는 교육용 합성 통계</small></section>
 <section class='slide'><span class='label'>T · TASK</span><div><h2>정답보다 입증 순서를 설계했다</h2><ul><li><b>데이터</b><span>결측·중복·단위·설비 편중과 조건별 분포 확인</span></li><li><b>실험</b><span>대조군·요인·반복·판정기준을 먼저 고정</span></li><li><b>책임</b><span>AI 제안과 사람의 검증 계획을 분리</span></li></ul></div></section>
-<section class='slide'><span class='label'>DATA · AI COLLABORATION · {safe_model}</span><div><h2>AI와 {len(conversation)}회 심층 검토했다</h2><div class='data-callout'><span><b>{len(phase_labels)}</b>사고 단계</span><span><b>{len(used_terms)}</b>공정 키워드</span><span><b>{total_tokens:,}</b>누적 tokens</span></div><p><b>진행 단계</b> · {html.escape(' → '.join(phase_labels))}</p><p><b>사람의 검증</b><br>{safe_human_check}</p><p>다음 슬라이드에서 질문·응답을 생략하지 않고 단계별로 추적한다.</p></div></section>
+<section class='slide'><span class='label'>DATA · AI COLLABORATION · {safe_model}</span><div><h2>질문을 증거와 판단으로 바꿨다</h2><div class='data-callout'><span><b>{len(conversation)}</b>AI 문답</span><span><b>{reviewed_count}</b>사람 검토</span><span><b>{len(used_terms)}</b>공정 키워드</span></div><p><b>사고 사슬</b> · {html.escape(' → '.join(phase_labels))}</p><p><b>사람의 종합 검증</b><br>{safe_human_check}</p><p>모델 사용량 {total_tokens:,} tokens · 다음 슬라이드에서 질문·응답과 회차별 채택·수정·기각 근거를 함께 추적한다.</p></div></section>
 {dialogue_slides}
 <section class='slide'><span class='label'>PROCESS KEYWORD MAP</span><div><h2>전문용어를 데이터 판단 언어로 바꿨다</h2><ul>{keyword_rows}</ul></div></section>
 <section class='slide grid dark'><span class='label'>A · ACTION</span><div><h2>비용이 아니라<br>정보가치를 선택했다</h2><p>선택 도구: {html.escape(' · '.join(tools) or '기록 없음')}</p><div class='metric'><span><b>{analysis.get('cost',0)}</b>비용</span><span><b>{analysis.get('time',0)}</b>분</span></div></div><img src='{tool_svg}' alt='차원 구조 검증 분석 툴 도식'></section>
@@ -836,6 +1017,82 @@ def final_verdict(state: SessionState) -> str:
     return "시나리오 해결 · 입력 증거 기준"
 
 
+def competency_evidence(state: SessionState) -> dict[str, Any]:
+    """Turn the auditable decision trail into a privacy-safe learning evidence card.
+
+    This is deliberately not called a learning-gain score: the current MVP has no
+    validated pre/post assessment yet. Every point below is derived from an
+    existing server record so the UI cannot award itself unsupported credit.
+    """
+    records = {item["stage"]: item for item in state.history}
+
+    incident = records.get("incident", {})
+    incident_score = 20 if incident.get("choice") == "hold" else 0
+
+    investigation = records.get("investigation", {})
+    evidence_score = max(0, min(100, int(investigation.get("evidence_score", 0) or 0)))
+    investigation_score = round(evidence_score * 0.30)
+
+    experiment = records.get("experiment", {})
+    experiment_score = {"screening": 20, "ofat": 10, "immediate": 0}.get(experiment.get("choice"), 0)
+
+    analysis = records.get("analysis", {})
+    if analysis.get("coverage") and analysis.get("resource_efficient"):
+        analysis_score = 15
+    elif analysis.get("coverage"):
+        analysis_score = 8
+    else:
+        analysis_score = 0
+
+    validation = records.get("validation", {})
+    if validation.get("choice") == "controlled" and validation.get("improved"):
+        validation_score = 15
+    elif validation.get("choice") == "direct" and validation.get("improved"):
+        validation_score = 6
+    else:
+        validation_score = 0
+
+    reviews = {"accept": 0, "revise": 0, "reject": 0, "pending": 0}
+    evidence_notes = 0
+    for exchange in state.ai_conversation:
+        review = exchange.get("review", {}) if isinstance(exchange, dict) else {}
+        verdict = review.get("verdict", "pending") if isinstance(review, dict) else "pending"
+        verdict = verdict if verdict in reviews else "pending"
+        reviews[verdict] += 1
+        if isinstance(review, dict) and str(review.get("evidence_note", "")).strip():
+            evidence_notes += 1
+
+    dimensions = [
+        {"id": "incident", "label": "이상 대응", "score": incident_score, "max_score": 20,
+         "evidence": "평균만으로 진행하지 않고 Lot을 보류함" if incident_score else "대표 평균에 의존하거나 아직 기록 없음"},
+        {"id": "investigation", "label": "데이터·증거 품질", "score": investigation_score, "max_score": 30,
+         "evidence": f"서버 채점 데이터 결론 {evidence_score}/100" if investigation else "데이터 결론 기록 없음"},
+        {"id": "experiment", "label": "실험 설계", "score": experiment_score, "max_score": 20,
+         "evidence": {"screening": "대조군 포함 Screening DOE", "ofat": "한 변수 확인 실험", "immediate": "대조군 없는 즉시 변경"}.get(experiment.get("choice"), "실험 설계 기록 없음")},
+        {"id": "analysis", "label": "자원·분석 선택", "score": analysis_score, "max_score": 15,
+         "evidence": f"필수 정보영역 {analysis.get('covered_kinds', 0)}/{analysis.get('required_kinds', 0)} · 자원 효율 {'충족' if analysis.get('resource_efficient') else '미충족'}" if analysis else "분석 선택 기록 없음"},
+        {"id": "validation", "label": "검증·적용 판단", "score": validation_score, "max_score": 15,
+         "evidence": "서버 Holdout 개선 확인 후 한정 적용" if validation_score == 15 else "검증 결과와 적용 범위의 연결이 불충분하거나 기록 없음"},
+    ]
+    return {
+        "version": "1.0",
+        "status": "complete" if state.completed else "in_progress",
+        "total": sum(item["score"] for item in dimensions),
+        "max_total": 100,
+        "dimensions": dimensions,
+        "ai_review": {
+            "turns": len(state.ai_conversation),
+            "reviewed": reviews["accept"] + reviews["revise"] + reviews["reject"],
+            "evidence_notes": evidence_notes,
+            **reviews,
+        },
+        "limitations": [
+            "교육용 합성 데이터의 서버 기록에서 계산한 과정 증거입니다.",
+            "사전·사후 검사나 실제 공정 성과를 측정한 학습 향상 점수가 아닙니다.",
+        ],
+    }
+
+
 def apply_decision(state: SessionState, request: DecisionRequest) -> dict[str, Any]:
     scenario = scenario_for(state)
     expected = current_stage(state)
@@ -866,7 +1123,7 @@ def apply_decision(state: SessionState, request: DecisionRequest) -> dict[str, A
         if not state.dataset_downloaded:
             raise HTTPException(422, "먼저 합성 원시 데이터 CSV를 다운로드하세요.")
         supplied_conversation = request.payload.get("ai_conversation", [])
-        if not state.ai_conversation and isinstance(supplied_conversation, list):
+        if isinstance(supplied_conversation, list):
             state.ai_conversation = [
                 {
                     "turn_no": index + 1,
@@ -877,6 +1134,13 @@ def apply_decision(state: SessionState, request: DecisionRequest) -> dict[str, A
                     "usage": exchange.get("usage", {}),
                     "keywords": matched_keywords(str(exchange.get("question", "")), scenario),
                     "phase": question_phase(index + 1),
+                    "review": {
+                        "verdict": str(exchange.get("review", {}).get("verdict", "pending"))
+                        if isinstance(exchange.get("review"), dict) and str(exchange.get("review", {}).get("verdict", "pending")) in {"pending", "accept", "revise", "reject"}
+                        else "pending",
+                        "evidence_note": str(exchange.get("review", {}).get("evidence_note", ""))[:500]
+                        if isinstance(exchange.get("review"), dict) else "",
+                    },
                 }
                 for index, exchange in enumerate(supplied_conversation[:15]) if isinstance(exchange, dict)
                 and len(str(exchange.get("question", ""))) >= 10 and len(str(exchange.get("response", ""))) >= 20
@@ -890,9 +1154,17 @@ def apply_decision(state: SessionState, request: DecisionRequest) -> dict[str, A
         if len(str(request.payload.get("human_check", ""))) < 20:
             raise HTTPException(422, "AI 답변을 어떻게 검증했는지 20자 이상 기록하세요.")
         request.payload["ai_conversation"] = state.ai_conversation
-        state.score += 30 if request.choice == "distribution" else -20
+        if state.scenario_id == "photo-cd-drift":
+            evidence_score, checks = score_photo_conclusion(state.seed, request.payload.get("conclusion"))
+            record.update({"evidence_score": evidence_score, "evidence_checks": checks})
+            state.score += round(evidence_score * 0.30)
+            feedback = f"서버 정답키 기준 데이터 결론 점수는 {evidence_score}/100입니다. 정답값은 공개하지 않습니다."
+        else:
+            evidence_score = 100 if request.choice == "distribution" else 0
+            record["evidence_score"] = evidence_score
+            state.score += 30 if request.choice == "distribution" else -20
+            feedback = "데이터 품질·분포와 AI 문답을 근거로 사람의 판단을 기록했습니다." if request.choice == "distribution" else "AI 문답이 있어도 평균만으로는 조건별 패턴을 설명할 수 없습니다."
         state.evidence.extend(["합성 원시 데이터 CSV", f"AI 문답 {len(state.ai_conversation)}회", "Tool·Lot·위치별 분포" if request.choice == "distribution" else "전체 평균"])
-        feedback = "데이터 품질·분포와 AI 문답을 근거로 사람의 판단을 기록했습니다." if request.choice == "distribution" else "AI 문답이 있어도 평균만으로는 조건별 패턴을 설명할 수 없습니다."
     elif request.stage == "experiment":
         if request.choice not in {"screening", "ofat", "immediate"}:
             raise HTTPException(422, "지원하지 않는 실험계획입니다.")
@@ -906,31 +1178,34 @@ def apply_decision(state: SessionState, request: DecisionRequest) -> dict[str, A
         tool_ids = request.payload.get("tools", [])
         if not isinstance(tool_ids, list) or not tool_ids or any(tool not in TOOLS for tool in tool_ids):
             raise HTTPException(422, "유효한 분석 툴을 하나 이상 선택하세요.")
+        if len(tool_ids) != len(set(tool_ids)):
+            raise HTTPException(422, "같은 분석 툴을 중복 선택할 수 없습니다.")
         selected = [TOOLS[tool] for tool in tool_ids]
-        cost = sum(tool["cost"] for tool in selected)
-        duration = sum(tool["time"] for tool in selected)
-        if cost > state.budget or duration > state.time_left:
+        tradeoff = analysis_tradeoff(tool_ids, scenario, state.budget, state.time_left)
+        cost = tradeoff["cost"]
+        duration = tradeoff["time"]
+        if not tradeoff["within_limits"]:
             raise HTTPException(422, "분석 예산 또는 시간을 초과했습니다.")
-        kinds = {tool["kind"] for tool in selected}
-        coverage = set(scenario["required_analysis_kinds"]).issubset(kinds)
-        overanalysis = len(selected) > 4 or cost > 65 or duration > 50
+        coverage = tradeoff["coverage"]
+        overanalysis = not tradeoff["resource_efficient"]
         state.budget -= cost
         state.time_left -= duration
         state.score += 16 if coverage and not overanalysis else -8
         state.evidence.extend(tool["label"] for tool in selected)
-        record.update({"tools": tool_ids, "coverage": coverage, "overanalysis": overanalysis, "cost": cost, "time": duration})
-        feedback = "필요 정보영역을 최소 비용으로 확보했습니다." if coverage and not overanalysis else "분석영역 공백 또는 과잉분석 위험이 남았습니다."
+        record.update({"tools": tool_ids, "overanalysis": overanalysis, **tradeoff})
+        feedback = (
+            f"필요 정보영역을 효율적으로 확보했습니다. 예상 증거 신뢰도 {tradeoff['confidence']}%."
+            if coverage and not overanalysis
+            else f"분석영역 공백 또는 자원 과소·과잉 사용 위험이 남았습니다. 예상 증거 신뢰도 {tradeoff['confidence']}%."
+        )
     elif request.stage == "validation":
         if request.choice not in {"controlled", "direct", "release"}:
             raise HTTPException(422, "지원하지 않는 최종 조치입니다.")
-        metrics = request.payload.get("metrics", {})
-        try:
-            baseline = float(metrics["baseline"])
-            holdout = float(metrics["holdout"])
-        except (KeyError, TypeError, ValueError):
-            raise HTTPException(422, "Baseline과 Holdout 수치를 입력하세요.")
-        direction = metrics.get("direction", "higher")
-        improved = holdout > baseline if direction == "higher" else holdout < baseline
+        metrics = state.validation_metrics or server_validation_metrics(state)
+        baseline = float(metrics["baseline"])
+        holdout = float(metrics["holdout"])
+        improved = bool(metrics["improved"])
+        record["metrics"] = metrics
         state.score += (14 if improved else -10) + {"controlled": 14, "direct": 2, "release": -18}[request.choice]
         record["improved"] = improved
         state.evidence.append("Holdout 검증")
@@ -938,6 +1213,8 @@ def apply_decision(state: SessionState, request: DecisionRequest) -> dict[str, A
 
     state.history.append(record)
     state.stage_index += 1
+    if state.stage_index == STAGES.index("validation") and not state.completed:
+        state.validation_metrics = server_validation_metrics(state)
     if state.stage_index >= len(STAGES):
         state.completed = True
         state.stage_index = len(STAGES) - 1
@@ -993,6 +1270,14 @@ def get_session(session_id: str) -> SessionState:
     if not scenario or state.scenario_version != scenario["version"]:
         raise HTTPException(409, "학습 흐름이 갱신되어 새 실험을 시작합니다.")
     return state
+
+
+@app.get("/api/sessions/{session_id}/outcomes")
+def get_session_outcomes(session_id: str) -> dict[str, Any]:
+    state = load_session(session_id)
+    if not state:
+        raise HTTPException(404, "세션을 찾을 수 없습니다.")
+    return competency_evidence(state)
 
 
 @app.get("/api/sessions/{session_id}/dataset.csv")

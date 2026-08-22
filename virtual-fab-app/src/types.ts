@@ -11,6 +11,10 @@ export type AIExchange = {
   phase?: { id: string; label: string; goal: string }
   finish_reason?: string
   retry_count?: number
+  review?: {
+    verdict: 'pending' | 'accept' | 'revise' | 'reject'
+    evidence_note: string
+  }
 }
 
 export type ProcessKeyword = { id: string; term: string; meaning: string; relevance: string }
@@ -20,6 +24,7 @@ export type Tool = {
   kind: 'dimension' | 'structure' | 'chemistry' | 'electrical'
   cost: number
   time: number
+  information: number
   destructive: boolean
 }
 
@@ -80,6 +85,14 @@ export type HistoryItem = {
   tools?: string[]
   cost?: number
   time?: number
+  confidence?: number
+  efficiency?: number
+  coverage?: boolean
+  covered_kinds?: number
+  required_kinds?: number
+  destructive_count?: number
+  resource_efficient?: boolean
+  benchmark?: { tools: string[]; cost: number; time: number; cost_delta: number; time_delta: number }
   improved?: boolean
 }
 
@@ -100,6 +113,7 @@ export type SessionState = {
   history: HistoryItem[]
   completed: boolean
   verdict: string | null
+  validation_metrics: { baseline: number; holdout: number; direction: 'higher' | 'lower'; improved: boolean; source: 'server_holdout' } | null
 }
 
 export type Decision = {
@@ -109,6 +123,32 @@ export type Decision = {
 }
 
 export type DecisionResult = { state: SessionState; feedback: string }
+
+export type CompetencyDimension = {
+  id: 'incident' | 'investigation' | 'experiment' | 'analysis' | 'validation'
+  label: string
+  score: number
+  max_score: number
+  evidence: string
+}
+
+export type CompetencyEvidence = {
+  version: string
+  status: 'in_progress' | 'complete'
+  total: number
+  max_total: number
+  dimensions: CompetencyDimension[]
+  ai_review: {
+    turns: number
+    reviewed: number
+    evidence_notes: number
+    accept: number
+    revise: number
+    reject: number
+    pending: number
+  }
+  limitations: string[]
+}
 
 export type DeepSeekResponse = {
   response: string

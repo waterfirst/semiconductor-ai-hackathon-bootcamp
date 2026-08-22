@@ -31,7 +31,9 @@ export function EvidenceDrawer({ open, scenario, session, onClose }: { open: boo
           return <li key={`${item.stage}-${index}`}><span>{String(item.decision_no ?? index + 1).padStart(2, '0')}</span><div><b>{stage?.label}</b><p>{toolLabels || CHOICE_LABELS[item.choice] || item.choice}</p>{item.cost !== undefined && <small>{item.cost}C · {item.time}m</small>}{item.stage === 'investigation' && <details><summary>데이터 다운로드 · AI 문답 {conversation.length}회</summary>{conversation.map((exchange, turn) => {
             const phase = exchange.phase && typeof exchange.phase === 'object' ? String(exchange.phase.label ?? '문답') : '문답'
             const keywords = Array.isArray(exchange.keywords) ? exchange.keywords.map(String).join(' · ') : ''
-            return <div key={turn}><strong>Q{turn + 1} · {phase} · {String(exchange.model ?? '외부 AI')}</strong>{keywords && <small>KEYWORDS · {keywords}</small>}<p>{String(exchange.question ?? '')}</p><strong>RESPONSE</strong><p>{String(exchange.response ?? '')}</p></div>
+            const review = exchange.review && typeof exchange.review === 'object' ? exchange.review : {}
+            const reviewLabel = review.verdict === 'accept' ? '채택' : review.verdict === 'revise' ? '수정' : review.verdict === 'reject' ? '기각' : '미검토'
+            return <div key={turn}><strong>Q{turn + 1} · {phase} · {String(exchange.model ?? '외부 AI')}</strong>{keywords && <small>KEYWORDS · {keywords}</small>}<p>{String(exchange.question ?? '')}</p><strong>RESPONSE</strong><p>{String(exchange.response ?? '')}</p><strong>HUMAN REVIEW · {reviewLabel}</strong><p>{String(review.evidence_note ?? '검증 근거 기록 없음')}</p></div>
           })}</details>}</div></li>
         })}
       </ol>}

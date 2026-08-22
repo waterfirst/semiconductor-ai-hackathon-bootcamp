@@ -1,4 +1,4 @@
-import type { BYOKConnection, BYOKCredentials, BYOKResponse, Decision, DecisionResult, DeepSeekResponse, ReportPayload, Scenario, ScenarioSummary, SessionState, StageId } from './types'
+import type { BYOKConnection, BYOKCredentials, BYOKResponse, CompetencyEvidence, Decision, DecisionResult, DeepSeekResponse, ReportPayload, Scenario, ScenarioSummary, SessionState, StageId } from './types'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -22,6 +22,7 @@ export const api = {
   scenario: (scenarioId: string) => request<Scenario>(`scenario/${encodeURIComponent(scenarioId)}`),
   createSession: (scenarioId: string) => request<SessionState>(`sessions?scenario_id=${encodeURIComponent(scenarioId)}`, { method: 'POST' }),
   session: (sessionId: string) => request<SessionState>(`sessions/${sessionId}`),
+  outcomes: (sessionId: string) => request<CompetencyEvidence>(`sessions/${sessionId}/outcomes`),
   decide: (sessionId: string, decision: Decision) =>
     request<DecisionResult>(`sessions/${sessionId}/decisions`, {
       method: 'POST',
