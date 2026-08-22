@@ -5,6 +5,7 @@
 - [모두의 창업 2차 사업계획서 전략 초안](MODOO_VIRTUAL_FAB_BUSINESS_PLAN_DRAFT_2026-08-23.md)
 - [렛유인 특강 참여자 파일럿 프로토콜](LETUIN_STUDENT_PILOT_PROTOCOL_2026-08-23.md)
 - [Industry Twin 산업데이터 계층 설계](INDUSTRY_TWIN_DATA_SPEC_2026-08-23.md)
+- [반도체 생태계 기업 심층분석 시리즈](company-ecosystem/README.md)
 
 ## 사용 순서
 
