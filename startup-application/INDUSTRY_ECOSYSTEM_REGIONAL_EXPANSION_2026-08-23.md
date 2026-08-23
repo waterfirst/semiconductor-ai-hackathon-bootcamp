@@ -1,7 +1,7 @@
 # 반도체·디스플레이 산업 지식맵 지역 확장 조사
 
 기준일: 2026-08-23
-적용 화면: <https://waterfirst.pro/virtual-fab/#industry-map>
+적용 화면: <https://waterfirst.pro/industry-map/>
 
 ## 조사 목적
 
@@ -57,15 +57,26 @@
 
 ## 화면 반영 결과
 
-- 기업 노드: **38개 → 58개**
+- 기업 노드: **38개 → 58개 → 73개**
 - 국가·지역 필터: **대한민국 / 중국 / 미국 / 유럽 / 일본·대만**
 - 산업 필터: 반도체 / 디스플레이 / 공통 기술
-- 공식 관계선: **15개 → 23개**
+- 공식 관계선: **15개 → 23개 → 26개**
 - 반도체 쪽 기업 밀집을 완화하기 위해 외곽 기업을 3중 궤도로 배치했다.
+
+## 디스플레이 장비·소재 보강 15개
+
+반도체에 비해 얇았던 디스플레이 공급망을 보강하되, 두 산업에 실제로 제품을 공급하는 회사는 디스플레이 전용으로 중복 배치하지 않고 **공통 기술 브리지**에 한 번만 배치했다.
+
+- 공통 장비: **JUSUNG Engineering, SFA Engineering, DMS, Nikon Precision**
+- 공통 소재: **Dongjin Semichem, Soulbrain, ENF Technology, AGC, Sumitomo Chemical, Samsung SDI**
+- 디스플레이 장비: **ICD, HB Solution**
+- 디스플레이 소재: **Idemitsu Kosan, Nippon Electric Glass, INNOX Advanced Materials**
+
+Dongjin Semichem 공식 해외사업장 자료에서 BOE·TCL CSOT·Guangzhou LG Display가 고객으로 명시된 경우만 공급선을 추가했다. 거래금액과 현재 품목별 비중은 공개되지 않았으므로 선 굵기는 관계의 공식성·지속성 수준만 나타내고 매출 비중으로 해석하지 않는다.
 
 ## 다음 조사 우선순위
 
-1. 대한민국: HPSP, Wonik IPS, PSK, Soulbrain, Dongjin Semichem, SFA, AP Systems.
+1. 대한민국: HPSP, Wonik IPS, PSK, AP Systems, Philoptics, YAS, Viatron.
 2. 중국: BOE·TCL CSOT의 장비·재료 공급망, Piotech, ACM Research Shanghai, Hwatsing.
 3. 미국: Wolfspeed, Coherent, Lattice, Astera Labs와 광통신·전력반도체 생태계.
 4. 유럽: NXP, Bosch, imec, IQE와 automotive·MEMS·compound semiconductor 생태계.

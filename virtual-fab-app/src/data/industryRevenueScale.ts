@@ -30,6 +30,10 @@ const REVENUE_TIERS: Record<string, RevenueTier> = {
   smic: 3, ymtc: 0, cxmt: 0, naura: 3, amec: 2,
   'intel-foundry': 4, globalfoundries: 3, qualcomm: 4, marvell: 3, 'onto-innovation': 2,
   stmicroelectronics: 4, infineon: 4, soitec: 2, 'merck-electronics': 3, aixtron: 2,
+  'dongjin-semichem': 2, soulbrain: 2, 'enf-technology': 2, 'jusung-engineering': 1,
+  'sfa-engineering': 2, dms: 1, nikon: 3, agc: 4, 'sumitomo-chemical': 4, 'samsung-sdi': 4,
+  icd: 1, 'hb-solution': 1, 'idemitsu-kosan': 5, 'nippon-electric-glass': 3,
+  'innox-advanced-materials': 1,
 }
 
 export function getRevenueScale(companyId: string): RevenueScale {
