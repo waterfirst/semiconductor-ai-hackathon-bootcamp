@@ -41,7 +41,7 @@ export const CATEGORY_LABELS: Record<CompanyCategory, string> = {
   design: 'EDA · IP',
   fabless: '칩 설계',
   manufacturing: 'Fab · Memory',
-  equipment: '공정 장비',
+  equipment: '공정 장비 · 설비',
   materials: '소재 · 핵심부품',
   packaging: '패키징 · 테스트',
 }

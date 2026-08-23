@@ -5,7 +5,9 @@ import type { Group } from 'three'
 import type { Line2 } from 'three-stdlib'
 import { DISPLAY_SUPPLIER_ROWS } from './data/displayProcessSuppliers'
 import { PROCESS_BENCHMARK_ROWS } from './data/industryProcessBenchmark'
+import { getRevenueScale, REVENUE_LEGEND } from './data/industryRevenueScale'
 import {
+  CATEGORY_COLORS,
   CATEGORY_LABELS,
   DOMAIN_COLORS,
   DOMAIN_LABELS,
@@ -79,18 +81,24 @@ const GALAXY_CENTERS = {
 const SEMICONDUCTOR_CORE = new Set(['samsung', 'sk-hynix', 'micron'])
 const DISPLAY_CORE = new Set(['samsung-display', 'lg-display', 'boe', 'tcl-csot'])
 
-function orbitPosition(center: [number, number, number], index: number, count: number, inner: boolean): [number, number, number] {
+const CATEGORY_LAYER_RADIUS: Record<CompanyCategory, number> = {
+  manufacturing: 2.55,
+  equipment: 3.28,
+  materials: 4.01,
+  packaging: 4.74,
+  design: 5.47,
+  fabless: 6.2,
+}
+
+function orbitPosition(center: [number, number, number], index: number, count: number, inner: boolean, category: CompanyCategory): [number, number, number] {
   if (inner) {
     const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2
     return [center[0] + Math.cos(angle) * 1.95, 1.05, center[2] + Math.sin(angle) * 1.65]
   }
-  const ringCount = 3
-  const ring = index % ringCount
-  const positionInRing = Math.floor(index / ringCount)
-  const countInRing = Math.max(1, Math.ceil((count - ring) / ringCount))
-  const angle = (positionInRing / countInRing) * Math.PI * 2 - Math.PI / 2 + ring * .16
-  const radius = 3.1 + ring * 1.42
-  return [center[0] + Math.cos(angle) * radius * 1.18, .82 + ring * .2, center[2] + Math.sin(angle) * radius]
+  const radius = CATEGORY_LAYER_RADIUS[category]
+  const layerIndex = Object.keys(CATEGORY_LAYER_RADIUS).indexOf(category)
+  const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2 + layerIndex * .57
+  return [center[0] + Math.cos(angle) * radius * 1.15, .78 + layerIndex * .08, center[2] + Math.sin(angle) * radius]
 }
 
 function positionCompanies(companies: IndustryCompany[]) {
@@ -110,10 +118,12 @@ function positionCompanies(companies: IndustryCompany[]) {
       position = [0, 1.25 + (index % 2) * .28, (index - (shared.length - 1) / 2) * 2.7]
     } else if (domain === 'semiconductor') {
       const group = core ? semiCore : semiOrbit
-      position = orbitPosition(GALAXY_CENTERS.semiconductor, group.findIndex((item) => item.id === company.id), group.length, core)
+      const layer = core ? group : group.filter((item) => item.category === company.category)
+      position = orbitPosition(GALAXY_CENTERS.semiconductor, layer.findIndex((item) => item.id === company.id), layer.length, core, company.category)
     } else {
       const group = core ? displayCore : displayOrbit
-      position = orbitPosition(GALAXY_CENTERS.display, group.findIndex((item) => item.id === company.id), group.length, core)
+      const layer = core ? group : group.filter((item) => item.category === company.category)
+      position = orbitPosition(GALAXY_CENTERS.display, layer.findIndex((item) => item.id === company.id), layer.length, core, company.category)
     }
     return { ...company, position, domain, core }
   })
@@ -142,19 +152,22 @@ function NodeGeometry({ category }: { category: CompanyCategory }) {
 }
 
 function CompanyNode({ company, position = company.position, selected, dimmed, onSelect }: { company: PositionedCompany; position?: [number, number, number]; selected: boolean; dimmed: boolean; onSelect: (id: string) => void }) {
-  const color = DOMAIN_COLORS[company.domain]
+  const categoryColor = CATEGORY_COLORS[company.category]
+  const domainColor = DOMAIN_COLORS[company.domain]
+  const revenue = getRevenueScale(company.id)
+  const planetScale = revenue.scale * (selected ? 1.22 : 1)
   return <group position={position}>
-    <mesh scale={(selected ? 1.35 : 1) * (company.core ? 1.28 : 1)} onClick={(event) => { event.stopPropagation(); onSelect(company.id) }} onPointerOver={() => { document.body.style.cursor = 'pointer' }} onPointerOut={() => { document.body.style.cursor = 'default' }}>
+    <mesh scale={planetScale} onClick={(event) => { event.stopPropagation(); onSelect(company.id) }} onPointerOver={() => { document.body.style.cursor = 'pointer' }} onPointerOut={() => { document.body.style.cursor = 'default' }}>
       <NodeGeometry category={company.category}/>
-      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={selected ? .72 : company.core ? .24 : .08} roughness={.42} metalness={.24} transparent opacity={dimmed ? .09 : 1}/>
+      <meshStandardMaterial color={categoryColor} emissive={domainColor} emissiveIntensity={selected ? .68 : company.core ? .22 : .1} roughness={.4} metalness={.26} transparent opacity={dimmed ? .09 : 1}/>
     </mesh>
-    {(selected || company.domain === 'shared') && !dimmed && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.38, 0]}><ringGeometry args={[.54, .7, 40]}/><meshBasicMaterial color={selected ? '#ffffff' : color} transparent opacity={.9}/></mesh>}
-    {!dimmed && <Html position={[0, .78, 0]} center zIndexRange={[30, 1]}>
+    {!dimmed && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.38 * planetScale, 0]}><ringGeometry args={[.5 * planetScale, .59 * planetScale, 40]}/><meshBasicMaterial color={selected ? '#ffffff' : domainColor} transparent opacity={selected || company.domain === 'shared' ? .95 : .64}/></mesh>}
+    {!dimmed && <Html position={[0, .62 + planetScale * .34, 0]} center zIndexRange={[30, 1]}>
       <button type="button" className={`industry-node-label ${selected ? 'selected' : ''} ${company.core ? 'core' : ''} ${company.domain}`} onClick={() => onSelect(company.id)} aria-label={`${company.name} 상세보고서 열기`} aria-pressed={selected}>
-        <b>{company.name}</b><span>{company.domain === 'shared' ? 'CROSS-INDUSTRY' : company.core ? 'GALAXY CORE' : company.role}</span>
+        <b>{company.name}</b><span>{CATEGORY_LABELS[company.category]} · {revenue.tier === 0 ? '매출 미확인' : revenue.label.replace('연매출 ', '')}</span>
       </button>
     </Html>}
-    {selected && !dimmed && <pointLight color={color} intensity={6} distance={5}/>}
+    {selected && !dimmed && <pointLight color={domainColor} intensity={6} distance={5}/>}
   </group>
 }
 
@@ -172,6 +185,7 @@ function Galaxy({ domain }: { domain: 'semiconductor' | 'display' }) {
   const color = DOMAIN_COLORS[domain]
   return <group>
     {[0, 1].map((arm) => <Line key={arm} points={spiralPoints(center, arm)} color={color} lineWidth={1.25} transparent opacity={.28}/>)}
+    {Object.entries(CATEGORY_LAYER_RADIUS).map(([category, radius]) => <mesh key={category} position={center} rotation={[-Math.PI / 2, 0, 0]} scale={[1.15, 1, 1]}><ringGeometry args={[radius - .025, radius + .025, 96]}/><meshBasicMaterial color={CATEGORY_COLORS[category as CompanyCategory]} transparent opacity={.2}/></mesh>)}
     <mesh position={center} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.7, 1.12, 64]}/><meshBasicMaterial color={color} transparent opacity={.34}/></mesh>
     <pointLight position={[center[0], 1.2, center[2]]} color={color} intensity={8} distance={7}/>
     <Sparkles count={70} scale={[9, .7, 9]} position={[center[0], .55, center[2]]} size={1.25} speed={0} color={color}/>
@@ -307,10 +321,12 @@ function ProcessBenchmark({ onSelectCompany }: { onSelectCompany: (id: string) =
 
 function CompanyReport({ company }: { company: IndustryCompany }) {
   const domain = getCompanyDomain(company.id)
+  const revenue = getRevenueScale(company.id)
   const verifiedRelations = VERIFIED_RELATIONS.filter((relation) => relation.from === company.id || relation.to === company.id)
   return <article className="industry-report" aria-live="polite">
     <header><div><span style={{ '--company-color': DOMAIN_COLORS[domain] } as CSSProperties}>{DOMAIN_LABELS[domain]} · {CATEGORY_LABELS[company.category]} · {company.country}</span><h2>{company.name}</h2><p>{company.role}</p></div><b className={company.status}>{company.status === 'deep' ? '심층분석 완료' : '요약 프로필'}</b></header>
     <p className="industry-report-summary">{company.summary}</p>
+    <section className="industry-company-scale" aria-label="행성 크기 기준"><b>행성 크기 · 매출 구간</b><strong>{revenue.label}</strong><span>{revenue.basis}. 회계연도·환율 차이 때문에 정확한 기업 순위가 아니라 넓은 구간만 표현해.</span></section>
     {domain === 'shared' && <section className="industry-cross-note"><b>두 은하의 공통 노드</b><p>반도체와 디스플레이가 함께 쓰는 진공·박막·세정·패터닝 역량을 뜻해. 특정 고객 계약을 의미하지는 않아.</p></section>}
     {verifiedRelations.length > 0 && <section className="industry-report-relations" aria-label="공식 공개 관계">
       <h3>공식 자료로 확인된 관계</h3>
@@ -370,9 +386,14 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
         {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>행성 공전 {motionEnabled ? 'ON' : 'PAUSED'} · 연결선은 실시간 추적</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
-        <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공개 관계 · 굵기 1–5</span></div></>}
+        <div className="industry-map-legend" aria-label="산업·업종·매출 범례">
+          <div className="industry-legend-domains">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i className="domain-ring" style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}</div>
+          <div className="industry-legend-categories">{Object.entries(CATEGORY_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': CATEGORY_COLORS[key as CompanyCategory] } as CSSProperties}/>{label}</span>)}</div>
+          <div className="industry-legend-scale"><b>행성 크기 = 최근 공개 연매출</b>{REVENUE_LEGEND.map((item) => <span key={item.tier}><i style={{ '--scale': item.scale } as CSSProperties}/>{item.label.replace('연매출 ', '')}</span>)}</div>
+          <span className="verified"><i/>공개 관계 · 굵기 1–5</span>
+        </div></>}
         <MapErrorBoundary fallback={<CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}>
-          <>{galaxyMounted && <div className={`industry-map-canvas ${viewMode === 'galaxy' ? '' : 'is-hidden'}`} aria-hidden={viewMode !== 'galaxy'}>{webgl ? <Canvas camera={{ position: [0, 27, 22], fov: 44 }} dpr={[1, 1.25]} frameloop={motionEnabled && viewMode === 'galaxy' ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled && viewMode === 'galaxy'} onSelect={setSelectedId}/></Canvas> : <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}</div>}{viewMode === 'process' ? <ProcessBenchmark onSelectCompany={selectFromReference}/> : viewMode === 'companies' ? <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/> : null}</>
+          <>{galaxyMounted && <div className={`industry-map-canvas ${viewMode === 'galaxy' ? '' : 'is-hidden'}`} aria-hidden={viewMode !== 'galaxy'}>{webgl ? <Canvas camera={{ position: [0, 39, 18], fov: 48 }} dpr={[1, 1.25]} frameloop={motionEnabled && viewMode === 'galaxy' ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled && viewMode === 'galaxy'} onSelect={setSelectedId}/></Canvas> : <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}</div>}{viewMode === 'process' ? <ProcessBenchmark onSelectCompany={selectFromReference}/> : viewMode === 'companies' ? <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/> : null}</>
         </MapErrorBoundary>
         {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all'); setRegion('all') }}>필터 초기화</button></div>}
       </section>
