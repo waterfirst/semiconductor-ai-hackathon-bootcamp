@@ -245,7 +245,7 @@ test('explore companies in the semiconductor and display dual galaxy', async ({ 
   test.skip(testInfo.project.name === 'mobile', '데스크톱 3D 노드 탐색은 데스크톱 프로젝트에서 확인')
   const errors: string[] = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
-  await page.goto('/#industry-map')
+  await page.goto('/industry-map/')
   await expect(page.getByRole('heading', { name: '반도체 × 디스플레이 산업 은하' })).toBeVisible()
   await expect(page.getByLabel('반도체와 디스플레이 산업 3D 지식맵')).toContainText('58 / 58 COMPANIES')
   await expect(page.getByRole('heading', { name: 'SK hynix' })).toBeVisible()
@@ -332,7 +332,7 @@ test('explore companies in the semiconductor and display dual galaxy', async ({ 
 
 test('knowledge map remains readable on mobile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', '모바일 프로젝트에서만 확인')
-  await page.goto('/#industry-map')
+  await page.goto('/industry-map/')
   await expect(page.getByRole('heading', { name: '반도체 × 디스플레이 산업 은하' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'SK hynix' })).toBeVisible()
   await expect(page.getByLabel('산업 지식맵 회사 목록')).toBeVisible()

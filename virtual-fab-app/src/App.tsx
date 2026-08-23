@@ -599,10 +599,24 @@ function ScenarioExperience({ scenarioId, onBack }: { scenarioId: string; onBack
 }
 
 export default function App() {
+  const standaloneIndustryMap = window.location.pathname.replace(/\/+$/, '') === '/industry-map'
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([])
   const [catalogError, setCatalogError] = useState('')
   const [catalogLoading, setCatalogLoading] = useState(true)
-  const [selectedId, setSelectedId] = useState(() => window.location.hash.slice(1))
+  const [selectedId, setSelectedId] = useState(() => standaloneIndustryMap ? 'industry-map' : window.location.hash.slice(1))
+
+  useEffect(() => {
+    if (!standaloneIndustryMap && window.location.hash === '#industry-map') {
+      const destination = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+        ? `${window.location.origin}/industry-map/`
+        : 'https://waterfirst.pro/industry-map/'
+      window.location.replace(destination)
+      return
+    }
+    if (standaloneIndustryMap) {
+      document.title = '반도체 × 디스플레이 산업 지식맵 | ScholarBridge'
+    }
+  }, [standaloneIndustryMap])
 
   useEffect(() => {
     const onHashChange = () => setSelectedId(window.location.hash.slice(1))
@@ -619,10 +633,22 @@ export default function App() {
   }, [])
 
   const select = (id: string) => { window.location.hash = id; setSelectedId(id) }
-  const back = () => { window.history.pushState(null, '', window.location.pathname + window.location.search); setSelectedId('') }
+  const back = () => {
+    if (standaloneIndustryMap) {
+      window.location.assign('/')
+      return
+    }
+    window.history.pushState(null, '', window.location.pathname + window.location.search)
+    setSelectedId('')
+  }
   const validSelection = scenarios.some((item) => item.id === selectedId)
 
-  if (selectedId === 'industry-map') return <Suspense fallback={<main className="loading">반도체 산업 지식맵을 불러오는 중…</main>}><IndustryKnowledgeMap onBack={back}/></Suspense>
+  if (selectedId === 'industry-map') return <Suspense fallback={<main className="loading">반도체 산업 지식맵을 불러오는 중…</main>}><IndustryKnowledgeMap onBack={back} backLabel="SCHOLARBRIDGE"/></Suspense>
   if (selectedId && (validSelection || catalogLoading)) return <ScenarioExperience key={selectedId} scenarioId={selectedId} onBack={back}/>
-  return <ModuleHome scenarios={scenarios} loading={catalogLoading} error={selectedId && !validSelection ? '선택한 시나리오를 찾지 못했어. 아래 목록에서 다시 골라줘.' : catalogError} onSelect={select} onOpenIndustryMap={() => select('industry-map')}/>
+  return <ModuleHome scenarios={scenarios} loading={catalogLoading} error={selectedId && !validSelection ? '선택한 시나리오를 찾지 못했어. 아래 목록에서 다시 골라줘.' : catalogError} onSelect={select} onOpenIndustryMap={() => {
+    const destination = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? `${window.location.origin}/industry-map/`
+      : 'https://waterfirst.pro/industry-map/'
+    window.location.assign(destination)
+  }}/>
 }

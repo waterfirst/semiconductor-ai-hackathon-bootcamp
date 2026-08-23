@@ -73,8 +73,10 @@ npm run build
 
 ## 공개 배포
 
-- 공개 주소: <https://waterfirst.pro/virtual-fab/>
-- 3D 산업 지식맵: <https://waterfirst.pro/virtual-fab/#industry-map>
+- 가상 팹 공개 주소: <https://waterfirst.pro/virtual-fab/>
+- 독립 3D 산업 지식맵: <https://waterfirst.pro/industry-map/>
+
+산업 지식맵은 가상 팹의 내부 해시 화면이 아니라 별도 공개 서비스 URL로 운영한다. 가상 팹의 `3D 산업 지식맵` 버튼은 이 독립 주소로 이동하며, 기존 `#industry-map` 주소는 호환을 위해 새 주소로 전환한다.
 - 지식맵은 30개 회사를 `설계·소재 → 장비 → Samsung·SK hynix·Micron → 로직결합·패키징·테스트 → AI 시스템 수요`의 5개 레이어로 연결한다. 분홍 실선은 공식 발표로 확인된 관계만 뜻하며, 나머지는 실제 계약이 아닌 교육용 역할 분류다.
 - Nginx가 TLS를 종료하고 로컬 `127.0.0.1:8510`으로 프록시한다.
 - BYOK 기능은 반드시 위 HTTPS 주소 또는 localhost에서 사용한다.
