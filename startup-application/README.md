@@ -6,6 +6,7 @@
 - [렛유인 특강 참여자 파일럿 프로토콜](LETUIN_STUDENT_PILOT_PROTOCOL_2026-08-23.md)
 - [Industry Twin 산업데이터 계층 설계](INDUSTRY_TWIN_DATA_SPEC_2026-08-23.md)
 - [반도체 생태계 기업 심층분석 시리즈](company-ecosystem/README.md)
+- [작동하는 5-layer 3D Industry Twin](https://waterfirst.pro/virtual-fab/#industry-map) — 30개 기업, Memory/IDM 중심 레이어, 공식관계 원문 구분
 
 ## 사용 순서
 
