@@ -84,8 +84,8 @@ function CompanyNode({ company, selected, dimmed, onSelect }: { company: Positio
       <meshStandardMaterial color={color} emissive={color} emissiveIntensity={selected ? .72 : company.core ? .24 : .08} roughness={.42} metalness={.24} transparent opacity={dimmed ? .09 : 1}/>
     </mesh>
     {(selected || company.domain === 'shared') && !dimmed && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.38, 0]}><ringGeometry args={[.54, .7, 40]}/><meshBasicMaterial color={selected ? '#ffffff' : color} transparent opacity={.9}/></mesh>}
-    {!dimmed && <Html position={[0, .72, 0]} center distanceFactor={16}>
-      <button type="button" className={`industry-node-label ${selected ? 'selected' : ''} ${company.core ? 'core' : ''} ${company.domain}`} onClick={() => onSelect(company.id)} aria-label={`${company.name} 상세보고서 열기`}>
+    {!dimmed && <Html position={[0, .78, 0]} center zIndexRange={[30, 1]}>
+      <button type="button" className={`industry-node-label ${selected ? 'selected' : ''} ${company.core ? 'core' : ''} ${company.domain}`} onClick={() => onSelect(company.id)} aria-label={`${company.name} 상세보고서 열기`} aria-pressed={selected}>
         <b>{company.name}</b><span>{company.domain === 'shared' ? 'CROSS-INDUSTRY' : company.core ? 'GALAXY CORE' : company.role}</span>
       </button>
     </Html>}
@@ -193,7 +193,7 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
         <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공식 공개 관계</span></div>
         <MapErrorBoundary fallback={<FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}>
-          {webgl ? <Canvas camera={{ position: [0, 29, 10], fov: 48 }} dpr={[1, 1.25]} frameloop="demand"><KnowledgeGraph companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
+          {webgl ? <Canvas camera={{ position: [0, 32, 11], fov: 48 }} dpr={[1, 1.25]} frameloop="demand"><KnowledgeGraph companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
         </MapErrorBoundary>
         {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all') }}>필터 초기화</button></div>}
       </section>
