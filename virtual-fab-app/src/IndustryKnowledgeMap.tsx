@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { Component, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Group } from 'three'
 import type { Line2 } from 'three-stdlib'
+import { DISPLAY_SUPPLIER_ROWS } from './data/displayProcessSuppliers'
 import { PROCESS_BENCHMARK_ROWS } from './data/industryProcessBenchmark'
 import {
   CATEGORY_LABELS,
@@ -261,23 +262,46 @@ function CompanyList({ companies, selectedId, onSelect, fallback = false }: { co
 }
 
 function ProcessBenchmark({ onSelectCompany }: { onSelectCompany: (id: string) => void }) {
+  const [benchmarkDomain, setBenchmarkDomain] = useState<'semiconductor' | 'display'>('semiconductor')
   return <section className="industry-process-benchmark" aria-labelledby="process-benchmark-title">
-    <header><div><h2 id="process-benchmark-title">공정별 장비 생태계 참고표</h2><p>노광부터 테스트까지 해외 선도사와 국내 장비사를 한 줄에서 비교해.</p></div><strong>과거 참고자료</strong></header>
-    <div className="industry-process-warning" role="note"><b>해석 주의</b><span>첨부 원문은 기준연도가 표시되지 않았어. 기술수준·부품 국산화율은 현재값이 아니라 당시 자료의 스냅샷이며 투자·구매 판단에는 사용할 수 없어.</span></div>
-    <div className="industry-process-table" role="table" aria-label="국내외 반도체 장비 기업과 국산화 참고자료">
-      <div className="industry-process-row industry-process-head" role="row"><span role="columnheader">공정</span><span role="columnheader">해외 기업</span><span role="columnheader">국내 기업</span><span role="columnheader">기술수준</span><span role="columnheader">부품 국산화</span></div>
-      {PROCESS_BENCHMARK_ROWS.map((row) => <div className="industry-process-row" role="row" key={`${row.stage}-${row.process}`}>
-        <span role="cell"><small>{row.stage}</small><b>{row.process}</b></span>
-        <span role="cell">{row.foreignCompanies.join(' · ')}</span>
-        <span role="cell">{row.koreanCompanies.join(' · ')}{row.mappedCompanyIds.length > 0 && <i>{row.mappedCompanyIds.map((id) => {
-          const company = INDUSTRY_COMPANIES.find((item) => item.id === id)
-          return company ? <button type="button" key={id} onClick={() => onSelectCompany(id)}>{company.name} 지도에서 보기</button> : null
-        })}</i>}</span>
-        <span role="cell"><meter min="0" max="100" value={row.domesticTechnology}>{row.domesticTechnology}%</meter><b>{row.domesticTechnology}%</b></span>
-        <span role="cell"><meter min="0" max="100" value={row.partsLocalization}>{row.partsLocalization}%</meter><b>{row.partsLocalization}%</b></span>
-      </div>)}
-    </div>
-    <footer>출처 표기: 첨부 자료의 “한국산업기술평가원”. 회사명은 원문 표기를 정리했으며 최신성·기관명·기준연도는 추가 검증이 필요해.</footer>
+    <header><div><h2 id="process-benchmark-title">공정별 장비·소재 생태계</h2><p>반도체 장비와 Flexible OLED 공급망을 공정 순서로 비교해.</p></div><strong>과거 참고자료</strong></header>
+    <nav className="industry-benchmark-switch" aria-label="공정 장비표 산업 선택">
+      <button type="button" aria-pressed={benchmarkDomain === 'semiconductor'} onClick={() => setBenchmarkDomain('semiconductor')}>반도체 장비</button>
+      <button type="button" aria-pressed={benchmarkDomain === 'display'} onClick={() => setBenchmarkDomain('display')}>Flexible OLED</button>
+    </nav>
+    {benchmarkDomain === 'semiconductor' ? <>
+      <div className="industry-process-warning" role="note"><b>해석 주의</b><span>첨부 원문은 기준연도가 표시되지 않았어. 기술수준·부품 국산화율은 현재값이 아니라 당시 자료의 스냅샷이며 투자·구매 판단에는 사용할 수 없어.</span></div>
+      <div className="industry-process-table" role="table" aria-label="국내외 반도체 장비 기업과 국산화 참고자료">
+        <div className="industry-process-row industry-process-head" role="row"><span role="columnheader">공정</span><span role="columnheader">해외 기업</span><span role="columnheader">국내 기업</span><span role="columnheader">기술수준</span><span role="columnheader">부품 국산화</span></div>
+        {PROCESS_BENCHMARK_ROWS.map((row) => <div className="industry-process-row" role="row" key={`${row.stage}-${row.process}`}>
+          <span role="cell"><small>{row.stage}</small><b>{row.process}</b></span>
+          <span role="cell">{row.foreignCompanies.join(' · ')}</span>
+          <span role="cell">{row.koreanCompanies.join(' · ')}{row.mappedCompanyIds.length > 0 && <i>{row.mappedCompanyIds.map((id) => {
+            const company = INDUSTRY_COMPANIES.find((item) => item.id === id)
+            return company ? <button type="button" key={id} onClick={() => onSelectCompany(id)}>{company.name} 지도에서 보기</button> : null
+          })}</i>}</span>
+          <span role="cell"><meter min="0" max="100" value={row.domesticTechnology}>{row.domesticTechnology}%</meter><b>{row.domesticTechnology}%</b></span>
+          <span role="cell"><meter min="0" max="100" value={row.partsLocalization}>{row.partsLocalization}%</meter><b>{row.partsLocalization}%</b></span>
+        </div>)}
+      </div>
+      <footer>출처 표기: 첨부 자료의 “한국산업기술평가원”. 회사명은 원문 표기를 정리했으며 최신성·기관명·기준연도는 추가 검증이 필요해.</footer>
+    </> : <>
+      <div className="industry-process-warning" role="note"><b>공급망 해석 주의</b><span>첨부 원문에 기준연도가 없어 현재 납품계약·고객사 인증·점유율로 단정할 수 없어. 공정과 대표 공급사를 이해하는 교육용 스냅샷으로만 봐줘.</span></div>
+      <div className="industry-process-table industry-display-table" role="table" aria-label="Flexible OLED 공정별 장비와 소재 공급사 참고자료">
+        <div className="industry-process-row industry-process-head" role="row"><span role="columnheader">공정</span><span role="columnheader">장비·소재</span><span role="columnheader">삼성 공급사</span><span role="columnheader">LG 공급사</span><span role="columnheader">중국·기타</span></div>
+        {DISPLAY_SUPPLIER_ROWS.map((row) => <div className="industry-process-row" role="row" key={`${row.majorProcess}-${row.detail}`}>
+          <span role="cell"><small>{row.majorProcess}</small><b>{row.detail}</b></span>
+          <span role="cell">{row.equipmentMaterial}{row.mappedCompanyIds.length > 0 && <i>{row.mappedCompanyIds.map((id) => {
+            const company = INDUSTRY_COMPANIES.find((item) => item.id === id)
+            return company ? <button type="button" key={id} onClick={() => onSelectCompany(id)}>{company.name} 지도에서 보기</button> : null
+          })}</i>}</span>
+          <span role="cell">{row.samsung.join(' · ')}</span>
+          <span role="cell">{row.lg.join(' · ')}</span>
+          <span role="cell">{row.chinaOthers.join(' · ')}</span>
+        </div>)}
+      </div>
+      <footer>출처 표기: 첨부 자료의 “신한금융투자”. 회사명은 판독 가능한 대표 업체 중심으로 정리했으며 최신 공급관계는 기업 공시·공식 제품자료로 재검증해야 해.</footer>
+    </>}
   </section>
 }
 
