@@ -16,6 +16,26 @@ import {
 } from './data/industryCompanies'
 
 type PositionedCompany = IndustryCompany & { position: [number, number, number]; domain: IndustryDomain; core: boolean }
+type RegionFilter = 'all' | 'korea' | 'china' | 'us' | 'europe' | 'japan-taiwan'
+
+const REGION_LABELS: Record<RegionFilter, string> = {
+  all: '전 지역',
+  korea: '대한민국',
+  china: '중국',
+  us: '미국',
+  europe: '유럽',
+  'japan-taiwan': '일본·대만',
+}
+const EUROPE_COUNTRIES = new Set(['Netherlands', 'Germany', 'France', 'United Kingdom', 'Switzerland'])
+
+function matchesRegion(company: IndustryCompany, region: RegionFilter) {
+  if (region === 'all') return true
+  if (region === 'korea') return company.country === 'South Korea'
+  if (region === 'china') return company.country === 'China'
+  if (region === 'us') return company.country === 'United States'
+  if (region === 'europe') return EUROPE_COUNTRIES.has(company.country)
+  return company.country === 'Japan' || company.country === 'Taiwan'
+}
 
 function relationLineWidth(strength: number, highlighted: boolean) {
   return highlighted ? 1.15 + strength * .78 : .45 + strength * .42
@@ -29,9 +49,17 @@ const SEMICONDUCTOR_CORE = new Set(['samsung', 'sk-hynix', 'micron'])
 const DISPLAY_CORE = new Set(['samsung-display', 'lg-display', 'boe', 'tcl-csot'])
 
 function orbitPosition(center: [number, number, number], index: number, count: number, inner: boolean): [number, number, number] {
-  const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2
-  const radius = inner ? 1.65 : 3.35 + (index % 2) * 1.35
-  return [center[0] + Math.cos(angle) * radius * 1.18, .9 + (index % 3) * .2, center[2] + Math.sin(angle) * radius]
+  if (inner) {
+    const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2
+    return [center[0] + Math.cos(angle) * 1.95, 1.05, center[2] + Math.sin(angle) * 1.65]
+  }
+  const ringCount = 3
+  const ring = index % ringCount
+  const positionInRing = Math.floor(index / ringCount)
+  const countInRing = Math.max(1, Math.ceil((count - ring) / ringCount))
+  const angle = (positionInRing / countInRing) * Math.PI * 2 - Math.PI / 2 + ring * .16
+  const radius = 3.1 + ring * 1.42
+  return [center[0] + Math.cos(angle) * radius * 1.18, .82 + ring * .2, center[2] + Math.sin(angle) * radius]
 }
 
 function positionCompanies(companies: IndustryCompany[]) {
@@ -204,28 +232,30 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
   const [selectedId, setSelectedId] = useState('sk-hynix')
   const [query, setQuery] = useState('')
   const [domain, setDomain] = useState<'all' | IndustryDomain>('all')
+  const [region, setRegion] = useState<RegionFilter>('all')
   const webgl = useMemo(supportsWebGL, [])
   const filtered = useMemo(() => positioned.filter((company) => {
     const matchesDomain = domain === 'all' || company.domain === domain
+    const matchesCountry = matchesRegion(company, region)
     const search = query.trim().toLocaleLowerCase('ko-KR')
-    const haystack = `${company.name} ${company.role} ${company.products.join(' ')} ${company.processes.join(' ')}`.toLocaleLowerCase('ko-KR')
-    return matchesDomain && (!search || haystack.includes(search))
-  }), [domain, positioned, query])
+    const haystack = `${company.name} ${company.country} ${company.role} ${company.products.join(' ')} ${company.processes.join(' ')}`.toLocaleLowerCase('ko-KR')
+    return matchesDomain && matchesCountry && (!search || haystack.includes(search))
+  }), [domain, positioned, query, region])
   const selected = INDUSTRY_COMPANIES.find((company) => company.id === selectedId) ?? INDUSTRY_COMPANIES[0]
   useEffect(() => { if (filtered.length > 0 && !filtered.some((company) => company.id === selectedId)) setSelectedId(filtered[0].id) }, [filtered, selectedId])
 
   return <main className="industry-map-shell">
     {/* THESIS: 두 산업을 별도 은하로 보되 공통 장비·소재 기업을 중앙의 단일 노드로 연결한다. */}
-    <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></header>
+    <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
         <div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>연결선 굵기 = 공개 관계 강도 · 점선 = 공동개발·인증</small></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
         <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공개 관계 · 굵기 1–5</span></div>
         <MapErrorBoundary fallback={<FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}>
-          {webgl ? <Canvas camera={{ position: [0, 32, 11], fov: 48 }} dpr={[1, 1.25]} frameloop="demand"><KnowledgeGraph companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
+          {webgl ? <Canvas camera={{ position: [0, 38, 13], fov: 48 }} dpr={[1, 1.25]} frameloop="demand"><KnowledgeGraph companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
         </MapErrorBoundary>
-        {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all') }}>필터 초기화</button></div>}
+        {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all'); setRegion('all') }}>필터 초기화</button></div>}
       </section>
       <aside className="industry-map-detail" aria-label="선택한 회사 상세보고서"><CompanyReport company={selected}/></aside>
     </section>

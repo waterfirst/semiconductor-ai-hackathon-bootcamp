@@ -34,6 +34,14 @@
 13. NVIDIA–Samsung Electronics: foundry와 memory 공급처로 공시, 품목별 비중 비공개 — 강도 3.
 14. TSMC–Synopsys: A16·N2P 인증 EDA/IP 및 3DIC 협력 — 강도 3.
 15. TSMC–Cadence: A16·N2P·3DFabric 인증 설계협력 — 강도 3.
+16. Qualcomm–TSMC: FY2023 주요 파운드리 공급처 — 강도 3.
+17. Qualcomm–Samsung Electronics: FY2023 주요 파운드리 공급처 — 강도 3.
+18. Qualcomm–GlobalFoundries: FY2023 주요 파운드리 공급처 — 강도 3.
+19. Qualcomm–SMIC: FY2023 주요 파운드리 공급처 — 강도 3.
+20. Soitec–STMicroelectronics: FD-SOI 기판 검증·산업화 — 강도 3.
+21. Soitec–Kokusai Electric: engineered substrate 공동 R&D — 강도 3.
+22. Intel Foundry–Synopsys: Intel 18A 설계생태계 지원 — 강도 3.
+23. Intel Foundry–Cadence: Intel 18A 설계생태계 지원 — 강도 3.
 
 ## 시각 규칙
 
@@ -62,3 +70,6 @@
 - NVIDIA–Amkor 공식 발표: <https://ir.amkor.com/news-releases/news-release-details/amkor-technology-announces-strategic-partnership-nvidia-expand>
 - Samsung Display–UDC 계약: <https://ir.oled.com/newsroom/press-releases/press-release-details/2022/Samsung-Display-and-Universal-Display-Corporation-Enter-into-Long-Term-OLED-Agreements/>
 - LG Display–UDC 계약: <https://ir.oled.com/newsroom/press-releases/press-release-details/2026/LG-Display-and-Universal-Display-Corporation-Strengthen-Two-Decade-OLED-Partnership-with-Extended-Long-Term-Agreements/default.aspx>
+- Qualcomm FY2023 Form 10-K: <https://www.sec.gov/Archives/edgar/data/0000804328/000110465924004824/tm2332302d2_ars.pdf>
+- Soitec–STMicroelectronics FD-SOI: <https://www.soitec.com/home/group/corporate/newsroom/press-releases/2025/12/09/quobly-marks-a-new-milestone-towards-industrialization-with-soitec-s-28si-fd-soi-substrates-now-cycling-in-st-s-300mm-fab>
+- Intel Foundry 생태계 발표: <https://newsroom.intel.com/intel-foundry/foundry-news-roadmaps-updates>

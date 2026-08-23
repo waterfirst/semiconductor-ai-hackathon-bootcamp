@@ -85,8 +85,9 @@ export const RELATION_COLORS: Record<RelationKind, string> = {
 
 const DISPLAY_COMPANY_IDS = new Set([
   'samsung-display', 'lg-display', 'boe', 'tcl-csot', 'canon-tokki', 'corning', 'universal-display',
+  'lx-semicon', 'duksan-neolux',
 ])
-const SHARED_COMPANY_IDS = new Set(['applied-materials', 'screen', 'ulvac'])
+const SHARED_COMPANY_IDS = new Set(['applied-materials', 'screen', 'ulvac', 'semes', 'merck-electronics', 'aixtron'])
 
 export function getCompanyDomain(companyId: string): IndustryDomain {
   if (SHARED_COMPANY_IDS.has(companyId)) return 'shared'
@@ -119,11 +120,11 @@ export const VALUE_LAYERS: Array<{ id: ValueLayerId; label: string; kicker: stri
 ]
 
 const COMPANY_LAYERS: Record<ValueLayerId, string[]> = {
-  foundations: ['synopsys', 'cadence', 'arm', 'zeiss', 'shinetsu', 'sumco', 'jsr', 'tok', 'entegris', 'air-liquide'],
-  equipment: ['asml', 'applied-materials', 'lam', 'tel', 'kla', 'asm', 'screen', 'kokusai', 'axcelis'],
-  memory: ['samsung', 'sk-hynix', 'micron'],
-  integration: ['tsmc', 'ase', 'amkor', 'advantest', 'teradyne'],
-  demand: ['nvidia', 'amd', 'broadcom'],
+  foundations: ['synopsys', 'cadence', 'arm', 'zeiss', 'shinetsu', 'sumco', 'jsr', 'tok', 'entegris', 'air-liquide', 'sk-siltron', 'duksan-neolux', 'soitec', 'merck-electronics'],
+  equipment: ['asml', 'applied-materials', 'lam', 'tel', 'kla', 'asm', 'screen', 'kokusai', 'axcelis', 'semes', 'naura', 'amec', 'onto-innovation', 'aixtron'],
+  memory: ['samsung', 'sk-hynix', 'micron', 'ymtc', 'cxmt'],
+  integration: ['tsmc', 'ase', 'amkor', 'advantest', 'teradyne', 'db-hitek', 'smic', 'intel-foundry', 'globalfoundries', 'stmicroelectronics', 'infineon'],
+  demand: ['nvidia', 'amd', 'broadcom', 'lx-semicon', 'qualcomm', 'marvell'],
 }
 
 export function getCompanyLayer(companyId: string): ValueLayerId {
@@ -236,6 +237,62 @@ export const VERIFIED_RELATIONS: IndustryRelation[] = [
     asOf: '2025-04-24',
     source: 'https://www.cadence.com/en_US/home/company/newsroom/press-releases/pr/2025/cadence-and-tsmc-advance-ai-and-3d-ic-chip-design-with-certified.html',
   },
+  {
+    from: 'qualcomm', to: 'tsmc', kind: 'manufacturing', strength: 3,
+    label: '디지털·RF·전력 IC 파운드리 공급',
+    evidence: 'Qualcomm FY2023 10-K는 TSMC를 디지털·아날로그/혼합신호·RF·PM IC의 주요 파운드리 공급처로 명시했다.',
+    asOf: '2023-09-24',
+    source: 'https://www.sec.gov/Archives/edgar/data/0000804328/000110465924004824/tm2332302d2_ars.pdf',
+  },
+  {
+    from: 'qualcomm', to: 'samsung', kind: 'manufacturing', strength: 3,
+    label: '디지털·RF·전력 IC 파운드리 공급',
+    evidence: 'Qualcomm FY2023 10-K는 Samsung Electronics를 주요 파운드리 공급처로 명시했다.',
+    asOf: '2023-09-24',
+    source: 'https://www.sec.gov/Archives/edgar/data/0000804328/000110465924004824/tm2332302d2_ars.pdf',
+  },
+  {
+    from: 'qualcomm', to: 'globalfoundries', kind: 'manufacturing', strength: 3,
+    label: 'RF·혼합신호 IC 파운드리 공급',
+    evidence: 'Qualcomm FY2023 10-K는 GlobalFoundries를 주요 파운드리 공급처로 명시했다.',
+    asOf: '2023-09-24',
+    source: 'https://www.sec.gov/Archives/edgar/data/0000804328/000110465924004824/tm2332302d2_ars.pdf',
+  },
+  {
+    from: 'qualcomm', to: 'smic', kind: 'manufacturing', strength: 3,
+    label: '성숙공정 IC 파운드리 공급',
+    evidence: 'Qualcomm FY2023 10-K는 SMIC를 주요 파운드리 공급처로 명시했다.',
+    asOf: '2023-09-24',
+    source: 'https://www.sec.gov/Archives/edgar/data/0000804328/000110465924004824/tm2332302d2_ars.pdf',
+  },
+  {
+    from: 'soitec', to: 'stmicroelectronics', kind: 'collaboration', strength: 3,
+    label: 'FD-SOI 기판 검증·산업화',
+    evidence: 'Soitec의 28Si FD-SOI 기판을 STMicroelectronics 300 mm fab에서 검증·공정 산업화하는 협력이 공개됐다.',
+    asOf: '2025-12-09',
+    source: 'https://www.soitec.com/home/group/corporate/newsroom/press-releases/2025/12/09/quobly-marks-a-new-milestone-towards-industrialization-with-soitec-s-28si-fd-soi-substrates-now-cycling-in-st-s-300mm-fab',
+  },
+  {
+    from: 'soitec', to: 'kokusai', kind: 'collaboration', strength: 3,
+    label: 'engineered substrate 공동 R&D',
+    evidence: '양사는 Substrate Innovation Center에서 막 두께 균일도와 표면 거칠기 개선을 위한 공동 R&D를 확대했다.',
+    asOf: '2019-07-08',
+    source: 'https://www.soitec.com/home/group/corporate/newsroom/press-releases/2019/07/08/soitec-and-kokusai-electric-corporation-expand-their-strategic-technology-partnership-through-r-d-collaboration-at-substrate-innovation-center',
+  },
+  {
+    from: 'intel-foundry', to: 'synopsys', kind: 'certification', strength: 3,
+    label: 'Intel 18A 설계 생태계 인증',
+    evidence: 'Intel Foundry는 Synopsys의 설계 flow와 IP가 Intel 18A 및 첨단패키징 고객 설계를 지원한다고 공개했다.',
+    asOf: '2024-02-21',
+    source: 'https://newsroom.intel.com/intel-foundry/foundry-news-roadmaps-updates',
+  },
+  {
+    from: 'intel-foundry', to: 'cadence', kind: 'certification', strength: 3,
+    label: 'Intel 18A 설계 생태계 인증',
+    evidence: 'Intel Foundry는 Cadence의 설계 flow와 IP가 Intel 18A 및 첨단패키징 고객 설계를 지원한다고 공개했다.',
+    asOf: '2024-02-21',
+    source: 'https://newsroom.intel.com/intel-foundry/foundry-news-roadmaps-updates',
+  },
 ]
 
 const githubReport = (filename: string) => `https://github.com/waterfirst/semiconductor-ai-hackathon-bootcamp/blob/main/startup-application/company-ecosystem/${filename}`
@@ -330,4 +387,27 @@ export const INDUSTRY_COMPANIES: IndustryCompany[] = [
   { id: 'ulvac', name: 'ULVAC', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '반도체·디스플레이 진공 장비', summary: '반도체와 OLED·LCD 생산에 필요한 진공·증착·열처리 장비를 공급해 두 산업의 박막 형성을 잇는다.', products: ['Semiconductor vacuum equipment', 'OLED deposition', 'LCD production equipment'], processes: ['VACUUM', 'PVD', 'OLED DEPOSITION', 'THERMAL'], jobs: ['Vacuum', 'Thin film', 'Equipment', 'Field service'], risks: ['설비투자 사이클', '장비 경쟁', '고객인증'], sources: [{ label: 'ULVAC 디스플레이 장비', url: 'https://www.ulvac.co.jp/en/business/display_energy_production_equipment/' }, { label: 'ULVAC 반도체 장비', url: 'https://www.ulvac.co.jp/en/business/semiconductor_electronic_device_production_equipment/' }] },
   { id: 'corning', name: 'Corning', country: 'United States', category: 'materials', hub: 'materials', status: 'profile', role: '디스플레이 유리 기판', summary: 'LCD·OLED의 TFT backplane과 color filter를 지지하는 고평탄·고안정 glass substrate를 공급한다.', products: ['EAGLE XG', 'Lotus NXT', 'Display glass substrates'], processes: ['GLASS FORMING', 'TFT SUBSTRATE', 'DISPLAY BACKPLANE'], jobs: ['Glass materials', 'Quality', 'Process', 'Application'], risks: ['패널 투자 사이클', '유리 세대 전환', '고객집중'], sources: [{ label: 'Corning Display Glass', url: 'https://www.corning.com/worldwide/en/products/display-glass/products.html' }] },
   { id: 'universal-display', name: 'Universal Display', country: 'United States', category: 'materials', hub: 'materials', status: 'profile', role: 'OLED 발광재료·기술', summary: '인광 OLED 재료와 관련 기술을 제공해 OLED 효율·색·수명 성능에 영향을 주는 소재 노드.', products: ['PHOLED materials', 'OLED emitter technology'], processes: ['ORGANIC MATERIAL', 'EMISSIVE LAYER', 'MATERIAL QUALIFICATION'], jobs: ['Organic chemistry', 'Device', 'Application'], risks: ['고객집중', '재료 수명·색 성능', '특허 경쟁'], sources: [{ label: 'Universal Display 공식', url: 'https://oled.com/' }] },
+  { id: 'semes', name: 'SEMES', country: 'South Korea', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '반도체·디스플레이 공정장비', summary: '세정·포토트랙·식각·후공정과 OLED·QD 잉크젯 장비를 함께 개발하는 국내 공통 장비 노드.', products: ['Clean·Photo track·Etch', 'HBM TC bonder·Prober', 'QD-OLED inkjet'], processes: ['CLEAN', 'PHOTO', 'ETCH', 'BONDING', 'DISPLAY INKJET'], jobs: ['Process', 'Mechanical·Control', 'Software', 'Field service'], risks: ['대형 고객 투자 의존', '장비 인증기간', '선단공정 국산화 실행'], sources: [{ label: 'SEMES 기업 개요', url: 'https://semes.com/en/company/corporate-overview' }, { label: 'SEMES 제품', url: 'https://www.semes.com/en/product/product/view?tab=0' }] },
+  { id: 'db-hitek', name: 'DB HiTek', country: 'South Korea', category: 'manufacturing', hub: 'fab', status: 'profile', role: 'Analog·Power specialty foundry', summary: '90 nm~0.35 μm 공정에서 BCDMOS·CIS·mixed-signal과 SiC·GaN을 전개하는 국내 특화 파운드리.', products: ['BCDMOS·Analog CMOS', 'CIS·Mixed Signal/RF', 'SJ MOSFET·SiC·GaN'], processes: ['SPECIALTY FOUNDRY', 'POWER DEVICE', 'CIS', 'WAFER FAB'], jobs: ['Device·Process integration', 'Foundry application', 'Yield·Quality'], risks: ['성숙공정 가격경쟁', '전력반도체 전환', '고객·가동률 변동'], sources: [{ label: 'DB HiTek 기업 개요', url: 'https://www.dbhitek.co.kr/en/company/about' }, { label: 'DB HiTek 기술 포트폴리오', url: 'https://dbhitek.com/en/technology/overview' }] },
+  { id: 'sk-siltron', name: 'SK Siltron', country: 'South Korea', category: 'materials', hub: 'materials', status: 'profile', role: 'Si·SiC 반도체 웨이퍼', summary: '300 mm silicon wafer와 SiC wafer를 생산해 반도체 공정의 결정결함·평탄도·저항률 출발점을 공급한다.', products: ['300 mm Si wafer', 'SiC wafer·epitaxy'], processes: ['CRYSTAL GROWTH', 'WAFERING', 'POLISH', 'SUBSTRATE QUALITY'], jobs: ['Crystal·Materials', 'Wafer process', 'Metrology·Quality'], risks: ['대규모 증설', '에너지·원재료', '고객 qualification'], sources: [{ label: 'SK Profile 2025', url: 'https://eng.sk.com/uploads/documents/SK_Profile_2025_ENG.pdf' }, { label: 'SK Siltron CSS', url: 'https://eng.sk.com/investments/info/michigan' }] },
+  { id: 'lx-semicon', name: 'LX Semicon', country: 'South Korea', category: 'fabless', hub: 'compute', status: 'profile', role: '디스플레이 시스템반도체 설계', summary: 'DDI·timing controller·touch·PMIC로 패널의 영상신호와 픽셀 구동·전력을 제어하는 디스플레이 fabless.', products: ['Display Driver IC', 'Timing controller·Processor IC', 'Touch IC·PMIC'], processes: ['DISPLAY IC DESIGN', 'PANEL DRIVE', 'POWER MANAGEMENT'], jobs: ['Analog·Digital design', 'Verification', 'Panel application'], risks: ['패널 고객집중', 'DDI 가격경쟁', '파운드리 공급'], sources: [{ label: 'LX Semicon 공식 제품', url: 'https://www.lxsemicon.com/' }] },
+  { id: 'duksan-neolux', name: 'Duksan Neolux', country: 'South Korea', category: 'materials', hub: 'materials', status: 'profile', role: 'AMOLED 유기재료', summary: 'AMOLED용 발광·공통층과 봉지 재료를 개발·생산하는 국내 OLED 소재기업.', products: ['Red host·emissive materials', 'HTL 등 common layers', 'Encapsulation materials'], processes: ['ORGANIC MATERIAL', 'OLED EVAPORATION INPUT', 'MATERIAL QUALIFICATION'], jobs: ['Organic synthesis', 'OLED device evaluation', 'Quality·Application'], risks: ['고객 qualification', '발광재료 수명·효율', '특허·해외 경쟁'], sources: [{ label: 'Duksan Neolux 기업 개요', url: 'https://www.dsnl.co.kr/Eng/AboutOverview.aspx' }, { label: '2025 Q3 IR', url: 'https://www.dsnl.co.kr/IR_Reference/IR_Report/en/2025/DSNL_25.3Q%28EN%29.pdf' }] },
+
+  { id: 'smic', name: 'SMIC', country: 'China', category: 'manufacturing', hub: 'fab', status: 'profile', role: '중국 pure-play foundry', summary: '8·12인치 wafer foundry와 logic·analog/power·DDIC·CIS·eNVM 공정 플랫폼을 제공하는 중국 핵심 제조 노드.', products: ['28 nm~mature-node foundry', 'Analog·Power·DDIC', 'CIS·eNVM·RF'], processes: ['WAFER FAB', 'SPECIALTY PROCESS', 'MASK·MPW', 'YIELD'], jobs: ['Integration', 'Process·Equipment', 'Foundry service'], risks: ['수출통제·장비 접근', '선단 수율', '대규모 CapEx'], sources: [{ label: 'SMIC 기술 플랫폼', url: 'https://www.smics.com/en/site/productdetail/2' }, { label: 'SMIC 2024 연차보고서', url: 'https://www.smics.com/uploads/67f6423d/e00981.pdf' }] },
+  { id: 'ymtc', name: 'YMTC', country: 'China', category: 'manufacturing', hub: 'fab', status: 'profile', role: '3D NAND memory IDM', summary: 'array와 CMOS wafer를 따로 만든 뒤 결합하는 Xtacking 구조로 3D NAND·embedded memory·SSD를 공급한다.', products: ['3D NAND TLC·QLC', 'UFS·eMMC', 'Client·Enterprise SSD'], processes: ['3D NAND', 'WAFER BONDING', 'MEMORY PACKAGE', 'SSD'], jobs: ['Memory device', 'Bonding·Integration', 'Product·Firmware'], risks: ['수출통제', '수율·세대전환', 'controller·장비 생태계'], sources: [{ label: 'YMTC 기업 개요', url: 'https://www.ymtc.com/en/intro.html' }, { label: 'Xtacking 기술', url: 'https://www.ymtc.com/en/technicalintroduction.html' }] },
+  { id: 'cxmt', name: 'CXMT', country: 'China', category: 'manufacturing', hub: 'fab', status: 'profile', role: '중국 DRAM IDM', summary: 'DDR5·LPDDR5X 등 DRAM을 설계·제조·판매하며 중국 메모리 공급망의 중심을 형성한다.', products: ['DDR5·Modules', 'LPDDR5·5X', 'DDR4·LPDDR4X'], processes: ['DRAM DESIGN', 'MEMORY FAB', 'PACKAGE·MODULE', 'PRODUCT TEST'], jobs: ['DRAM device·design', 'Process', 'Product·Quality'], risks: ['미세공정 장비 규제', '수율·원가', '글로벌 DRAM 경쟁'], sources: [{ label: 'CXMT 기업 개요', url: 'https://www.cxmt.com/en/about.html' }, { label: 'CXMT 제품', url: 'https://www.cxmt.com/en/product.html' }] },
+  { id: 'naura', name: 'NAURA', country: 'China', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '중국 종합 반도체 장비', summary: 'Etch·PVD·CVD·furnace·clean·implant를 폭넓게 공급하며 중국 장비 국산화 범위를 대표한다.', products: ['Etch·PVD·CVD', 'Vertical furnace·RTP', 'Wet clean·Ion implant·EPI'], processes: ['ETCH', 'DEPOSITION', 'THERMAL', 'CLEAN', 'IMPLANT'], jobs: ['Plasma·Thin film', 'Thermal·Mechanical', 'Field application'], risks: ['선단부품·IP 접근', '고객 검증', '수출통제'], sources: [{ label: 'NAURA 반도체 장비', url: 'https://www.naura.com/product/semiconductor.html' }] },
+  { id: 'amec', name: 'AMEC', country: 'China', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: 'Etch·MOCVD·박막 장비', summary: 'CCP·ICP 식각과 GaN LED·power용 MOCVD, ALD·LPCVD·EPI로 반도체와 optoelectronics 공정을 잇는다.', products: ['CCP·ICP etch', 'MOCVD', 'ALD·LPCVD·EPI'], processes: ['ETCH', 'MOCVD', 'THIN FILM', 'LED·POWER DEVICE'], jobs: ['Plasma process', 'Epitaxy', 'Equipment·Application'], risks: ['수출통제', '고객별 공정인증', '글로벌 장비 경쟁'], sources: [{ label: 'AMEC 2025 factsheet', url: 'https://www.amec-inc.com/uploads/files/20251020/17609248969991.pdf' }] },
+
+  { id: 'intel-foundry', name: 'Intel Foundry', country: 'United States', category: 'manufacturing', hub: 'fab', status: 'profile', role: '선단공정·시스템 파운드리', summary: 'Intel 18A와 EMIB·Foveros, test·IP·EDA 생태계를 묶어 chiplet 기반 시스템 제조를 제공한다.', products: ['Intel 18A·14A', 'EMIB·Foveros', 'Advanced test·IP ecosystem'], processes: ['GAA·BACKSIDE POWER', 'WAFER FAB', '2.5D·3D PACKAGE', 'TEST'], jobs: ['Device·Integration', 'Package', 'EDA enablement', 'Yield'], risks: ['외부고객 수율·신뢰', '초대형 CapEx', 'TSMC·Samsung 경쟁'], sources: [{ label: 'Intel Foundry 개요', url: 'https://www.intel.com/content/www/us/en/foundry/overview.html' }, { label: 'Intel Foundry 공정', url: 'https://www.intel.com/content/www/us/en/foundry/process.html' }] },
+  { id: 'globalfoundries', name: 'GlobalFoundries', country: 'United States', category: 'manufacturing', hub: 'fab', status: 'profile', role: '특화공정 글로벌 foundry', summary: 'RF-SOI·FDX·SiGe·silicon photonics와 automotive·industrial용 feature-rich 공정을 미국·독일·싱가포르에서 제조한다.', products: ['RF-SOI·FDX', 'SiGe·Silicon photonics', 'Automotive·IoT foundry'], processes: ['SPECIALTY FOUNDRY', 'RF·ANALOG', 'PHOTONICS', 'WAFER FAB'], jobs: ['Process integration', 'RF·Photonics', 'Manufacturing quality'], risks: ['가동률·장기계약', '공정 포트폴리오 집중', '지역별 CapEx'], sources: [{ label: 'GF at a Glance 2025', url: 'https://gf.com/wp-content/uploads/2025/01/GF-at-a-Glance-2025.pdf' }, { label: 'GF 2025 Form 20-F', url: 'https://www.sec.gov/Archives/edgar/data/1709048/000170904826000022/gfs-20251231.htm' }] },
+  { id: 'qualcomm', name: 'Qualcomm', country: 'United States', category: 'fabless', hub: 'compute', status: 'profile', role: '모바일·PC·차량용 SoC fabless', summary: 'Snapdragon CPU·GPU·NPU·modem을 통합해 모바일·PC·XR·자동차 반도체 수요를 파운드리와 패키징 생태계에 전달한다.', products: ['Snapdragon mobile·PC', '5G modem·RF', 'Automotive Digital Chassis'], processes: ['SOC DESIGN', 'MODEM·RF', 'AI ACCELERATOR', 'FOUNDRY OUTSOURCE'], jobs: ['Architecture', 'RF·Digital design', 'Verification·Software'], risks: ['스마트폰 집중', '고객 자체칩', '아시아 파운드리 의존'], sources: [{ label: 'Qualcomm 제품', url: 'https://www.qualcomm.com/products' }, { label: 'Qualcomm FY2025 10-K', url: 'https://www.sec.gov/Archives/edgar/data/804328/000080432825000085/qcom-20250928.htm' }] },
+  { id: 'marvell', name: 'Marvell', country: 'United States', category: 'fabless', hub: 'compute', status: 'profile', role: '데이터 인프라 반도체 설계', summary: 'custom ASIC·networking·storage·optical DSP로 AI 데이터센터의 연결과 데이터 이동을 설계하는 fabless.', products: ['Custom ASIC', 'Ethernet switching·PHY', 'Storage·Coherent DSP'], processes: ['ASIC DESIGN', 'NETWORK SILICON', 'HIGH-SPEED SERDES', 'FOUNDRY OUTSOURCE'], jobs: ['ASIC·DSP', 'SerDes·Network', 'Verification'], risks: ['대형 클라우드 고객집중', '선단 파운드리', 'AI 투자 사이클'], sources: [{ label: 'Marvell 제품', url: 'https://www.marvell.com/products.html' }, { label: 'Marvell FY2025 10-K', url: 'https://investor.marvell.com/sec-filings/all-sec-filings/content/0001835632-25-000057/mrvl-20250201.htm' }] },
+  { id: 'onto-innovation', name: 'Onto Innovation', country: 'United States', category: 'equipment', hub: 'lithography', status: 'profile', role: '검사·계측·패키징 리소그래피', summary: 'bare wafer부터 front-end와 advanced packaging까지 2D·3D metrology·inspection·analytics로 수율학습을 지원한다.', products: ['Inspection·Metrology', 'Panel lithography', 'Factory analytics'], processes: ['DEFECT INSPECTION', '3D METROLOGY', 'PACKAGING LITHOGRAPHY', 'PROCESS CONTROL'], jobs: ['Optics·Algorithm', 'Metrology application', 'Data analytics'], risks: ['장비 투자 사이클', 'KLA 등 경쟁', '첨단패키징 전환'], sources: [{ label: 'Onto Innovation 공식', url: 'https://ontoinnovation.com/' }, { label: 'Onto 기업 개요', url: 'https://ontoinnovation.com/about-us/' }] },
+
+  { id: 'stmicroelectronics', name: 'STMicroelectronics', country: 'Switzerland', category: 'manufacturing', hub: 'fab', status: 'profile', role: '유럽 종합 semiconductor IDM', summary: '자동차·산업·MCU·MEMS·SiC와 FD-SOI를 설계·제조하며 유럽의 특화 반도체 생산기반을 대표한다.', products: ['MCU·Analog·MEMS', 'SiC·GaN power', 'FD-SOI·RF-SOI'], processes: ['IDM FAB', 'POWER DEVICE', 'MEMS', 'PACKAGING'], jobs: ['Device·Process', 'Embedded design', 'Power·MEMS'], risks: ['자동차·산업 사이클', '유럽 제조원가', '팹 재편 실행'], sources: [{ label: 'ST 제조', url: 'https://www.st.com/content/st_com/en/about/manufacturing-at-st.html' }, { label: 'ST at a glance', url: 'https://investors.st.com/st-glance' }] },
+  { id: 'infineon', name: 'Infineon', country: 'Germany', category: 'manufacturing', hub: 'fab', status: 'profile', role: 'Power·Automotive semiconductor IDM', summary: 'Si·SiC·GaN 전력소자, MCU·sensor·security를 결합해 차량·산업의 전력변환과 제어를 담당한다.', products: ['IGBT·SiC·GaN', 'Automotive MCU·PMIC', 'Sensors·Security IC'], processes: ['POWER FAB', 'WIDE-BANDGAP', 'AUTOMOTIVE QUALIFICATION', 'PACKAGE'], jobs: ['Power device', 'Process·Reliability', 'Automotive system'], risks: ['자동차·산업 수요', 'SiC 증설·원가', '중국 경쟁'], sources: [{ label: 'Infineon 기업 개요', url: 'https://www.infineon.com/about/company' }, { label: 'Infineon 사업부', url: 'https://www.infineon.com/about/company/our-divisions' }] },
+  { id: 'soitec', name: 'Soitec', country: 'France', category: 'materials', hub: 'materials', status: 'profile', role: 'SOI·SiC engineered substrates', summary: 'Smart Cut 기반 RF-SOI·FD-SOI·Photonics-SOI·SmartSiC 기판으로 소자 성능과 전력효율을 좌우한다.', products: ['RF-SOI·FD-SOI', 'Photonics-SOI', 'SmartSiC'], processes: ['ENGINEERED SUBSTRATE', 'LAYER TRANSFER', 'BONDING', 'WAFER QUALITY'], jobs: ['Materials·Bonding', 'Substrate process', 'Characterization'], risks: ['스마트폰·자동차 사이클', '고객 qualification', 'SmartSiC 양산 확대'], sources: [{ label: 'Soitec 제품', url: 'https://www.soitec.com/home/products' }, { label: 'Soitec SmartSiC', url: 'https://www.soitec.com/home/products/product-platforms/smartsic' }] },
+  { id: 'merck-electronics', name: 'Merck KGaA Electronics', country: 'Germany', category: 'materials', hub: 'materials', status: 'profile', role: '반도체·디스플레이 소재', summary: '박막 precursor·CMP·세정·패터닝 소재와 LC·OLED·QD·barrier 소재를 함께 개발하는 유럽 공통 소재 노드.', products: ['Thin-film·CMP·Clean materials', 'Liquid crystal·OLED materials', 'QD color converter·Barrier'], processes: ['ALD·CVD MATERIAL', 'CMP·CLEAN', 'DISPLAY MATERIAL', 'QUALIFICATION'], jobs: ['Materials chemistry', 'Application', 'Quality·Supply'], risks: ['고객 qualification', '중국 소재 경쟁', '기술세대 전환'], sources: [{ label: 'Merck Electronics 2024 R&D', url: 'https://www.merckgroup.com/de/geschaeftsbericht/2024/lagebericht/grundlagen-des-konzerns/forschung-und-entwicklung/electronics.html' }, { label: 'Merck 사업 구성', url: 'https://www.merckgroup.com/de/geschaeftsbericht/2024/konzernanhang/zusammensetzung-des-konzerns.html' }] },
+  { id: 'aixtron', name: 'AIXTRON', country: 'Germany', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: 'Compound semiconductor MOCVD', summary: 'GaN·SiC·GaAs·InP용 MOCVD/CVD 장비로 power·RF·laser·Micro LED용 epitaxy를 지원한다.', products: ['G10-SiC', 'G10-GaN', 'G10-AsP MOCVD'], processes: ['EPITAXY', 'MOCVD·CVD', 'POWER·RF', 'MICRO LED·LASER'], jobs: ['Epitaxy process', 'Reactor·Gas flow', 'Application·Service'], risks: ['전력반도체 투자 사이클', '중국 장비 경쟁', '고객별 epi recipe'], sources: [{ label: 'AIXTRON 제품', url: 'https://www.aixtron.com/en/products' }, { label: 'AIXTRON power application', url: 'https://www.aixtron.com/en/innovation/applications/power-management' }] },
 ]
