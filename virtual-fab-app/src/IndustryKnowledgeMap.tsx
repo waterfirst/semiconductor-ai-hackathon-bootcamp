@@ -156,13 +156,14 @@ function CompanyNode({ company, position = company.position, selected, dimmed, o
   const domainColor = DOMAIN_COLORS[company.domain]
   const revenue = getRevenueScale(company.id)
   const planetScale = revenue.scale * (selected ? 1.22 : 1)
+  const showLabel = selected || company.core || revenue.tier >= 4
   return <group position={position}>
     <mesh scale={planetScale} onClick={(event) => { event.stopPropagation(); onSelect(company.id) }} onPointerOver={() => { document.body.style.cursor = 'pointer' }} onPointerOut={() => { document.body.style.cursor = 'default' }}>
       <NodeGeometry category={company.category}/>
       <meshStandardMaterial color={categoryColor} emissive={domainColor} emissiveIntensity={selected ? .68 : company.core ? .22 : .1} roughness={.4} metalness={.26} transparent opacity={dimmed ? .09 : 1}/>
     </mesh>
     {!dimmed && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.38 * planetScale, 0]}><ringGeometry args={[.5 * planetScale, .59 * planetScale, 40]}/><meshBasicMaterial color={selected ? '#ffffff' : domainColor} transparent opacity={selected || company.domain === 'shared' ? .95 : .64}/></mesh>}
-    {!dimmed && <Html position={[0, .62 + planetScale * .34, 0]} center zIndexRange={[30, 1]}>
+    {!dimmed && showLabel && <Html position={[0, .62 + planetScale * .34, 0]} center zIndexRange={[30, 1]}>
       <button type="button" className={`industry-node-label ${selected ? 'selected' : ''} ${company.core ? 'core' : ''} ${company.domain}`} onClick={() => onSelect(company.id)} aria-label={`${company.name} 상세보고서 열기`} aria-pressed={selected}>
         <b>{company.name}</b><span>{CATEGORY_LABELS[company.category]} · {revenue.tier === 0 ? '매출 미확인' : revenue.label.replace('연매출 ', '')}</span>
       </button>
@@ -384,7 +385,7 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
     <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-toolbar"><nav className="industry-map-view-switch" aria-label="산업 지식맵 보기 방식"><button type="button" aria-pressed={viewMode === 'galaxy'} onClick={() => setViewMode('galaxy')}>3D 은하</button><button type="button" aria-pressed={viewMode === 'companies'} onClick={() => setViewMode('companies')}>회사 목록</button><button type="button" aria-pressed={viewMode === 'process'} onClick={() => setViewMode('process')}>공정 장비표</button></nav><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
-        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>행성 공전 {motionEnabled ? 'ON' : 'PAUSED'} · 연결선은 실시간 추적</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
+        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>대형·핵심 회사명만 표시</b><small>작은 행성 클릭 → 회사명·보고서 · 공전 {motionEnabled ? 'ON' : 'PAUSED'}</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
         <div className="industry-map-legend" aria-label="산업·업종·매출 범례">
           <div className="industry-legend-domains">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i className="domain-ring" style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}</div>
