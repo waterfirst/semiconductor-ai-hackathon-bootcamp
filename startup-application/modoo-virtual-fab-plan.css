@@ -1,0 +1,58 @@
+@page { size: A4; margin: 16mm 15mm 18mm; }
+:root { --ink:#102c37; --teal:#007d87; --sky:#74d7dc; --amber:#d48a24; --bone:#f6f1e6; --line:#ccd8d7; --muted:#597079; --paper:#fffefb; }
+* { box-sizing:border-box; }
+html { color:var(--ink); background:#dfe7e6; font-family:"NanumSquare", "Noto Sans CJK KR", sans-serif; font-size:16px; line-height:1.72; }
+body { max-width:1120px; margin:0 auto; padding:0 46px 72px; background:var(--paper); box-shadow:0 16px 60px rgba(14,43,53,.13); }
+#quarto-header { margin:0 -46px 0; padding:64px 56px 48px; color:white; background:linear-gradient(135deg,#071e28 0%,#0d4c56 70%,#0c6972 100%); border-bottom:7px solid var(--amber); }
+#title-block-header { margin-block-end:0; }
+.quarto-title h1 { max-width:760px; margin:0; color:white; font-size:clamp(2.5rem,6vw,4.8rem); line-height:.98; letter-spacing:-.045em; }
+.subtitle { max-width:760px; margin:22px 0 0; color:#ccebec; font-size:1.18rem; line-height:1.5; }
+.date { color:#88cdd0; font-size:.82rem; letter-spacing:.08em; }
+#TOC { padding:24px 0; border:0; }
+.sidebar nav[role=doc-toc] ul { padding-left:0; }
+.sidebar nav[role=doc-toc] a { color:var(--muted); }
+main { min-width:0; }
+h1,h2,h3,h4 { color:var(--ink); font-weight:800; line-height:1.25; letter-spacing:-.025em; }
+h1 { margin-top:64px; padding-top:20px; border-top:4px solid var(--ink); font-size:2.3rem; }
+h2 { margin-top:42px; font-size:1.55rem; }
+h3 { margin-top:30px; font-size:1.12rem; }
+p,li { word-break:keep-all; }
+a { color:#006f79; text-decoration-thickness:1px; text-underline-offset:3px; }
+strong { font-weight:800; }
+table { width:100%; margin:20px 0 30px; border-collapse:collapse; font-size:.84rem; line-height:1.55; }
+thead { color:white; background:var(--ink); }
+th,td { padding:10px 11px; border:1px solid var(--line); vertical-align:top; }
+tbody tr:nth-child(even) { background:#f1f6f4; }
+blockquote { margin:22px 0; padding:18px 22px; color:#304f59; background:var(--bone); border-left:5px solid var(--amber); }
+.document-status { margin:26px 0 18px; padding:12px 16px; color:#49646d; background:#eef4f2; border:1px solid var(--line); font-size:.78rem; letter-spacing:.02em; }
+.hero-statement { margin:22px 0 44px; padding:30px 32px; color:white; background:var(--ink); border-left:8px solid var(--amber); }
+.hero-statement h2 { margin:0 0 14px; color:white; font-size:clamp(1.7rem,4vw,2.7rem); }
+.hero-statement p { margin:0; color:#cbe1e2; }
+.flow { margin:22px 0; padding:24px; color:#062c35; background:linear-gradient(90deg,#daf1ef,#fff5df); border:1px solid #acc9c7; font-size:1.03rem; text-align:center; }
+.architecture { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:24px 0; }
+.architecture h3 { grid-column:1/-1; margin:0; }
+.architecture p { margin:0; padding:18px; background:#eff6f5; border-top:4px solid var(--teal); }
+.callout { margin:24px 0; border-radius:0!important; }
+.callout-warning { border-left-color:var(--amber)!important; }
+.callout-important { border-left-color:#a43a35!important; }
+code { color:#934f00; background:#fff0d7; }
+hr { margin:48px 0; border:0; border-top:1px solid var(--line); }
+@media (max-width:760px) {
+  body { padding:0 20px 48px; }
+  #quarto-header { margin:0 -20px; padding:44px 24px 34px; }
+  .architecture { grid-template-columns:1fr; }
+  table { display:block; overflow-x:auto; }
+}
+@media print {
+  html { background:white; font-size:10.4pt; }
+  body { max-width:none; padding:0; box-shadow:none; }
+  #quarto-header { margin:-16mm -15mm 12mm; padding:25mm 18mm 18mm; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .sidebar, #quarto-margin-sidebar, .quarto-secondary-nav { display:none!important; }
+  .page-columns { display:block!important; }
+  main { width:100%!important; max-width:none!important; margin:0!important; }
+  h1 { break-before:page; margin-top:0; }
+  h2,h3 { break-after:avoid; }
+  table,.architecture,.callout,.hero-statement,.flow { break-inside:avoid; }
+  a { color:var(--ink); text-decoration:none; }
+  .anchorjs-link { display:none!important; }
+}
