@@ -1,6 +1,8 @@
 import { ContactShadows, Html, Line, OrbitControls, Sparkles } from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
-import { Component, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { Component, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type { Group } from 'three'
+import type { Line2 } from 'three-stdlib'
 import {
   CATEGORY_LABELS,
   DOMAIN_COLORS,
@@ -39,6 +41,32 @@ function matchesRegion(company: IndustryCompany, region: RegionFilter) {
 
 function relationLineWidth(strength: number, highlighted: boolean) {
   return highlighted ? 1.15 + strength * .78 : .45 + strength * .42
+}
+
+function orbitSignature(company: IndustryCompany) {
+  return [...company.id].reduce((sum, character) => sum + character.charCodeAt(0), 0)
+}
+
+function orbitAngle(company: PositionedCompany, elapsed: number) {
+  const signature = orbitSignature(company)
+  const direction = signature % 2 === 0 ? 1 : -1
+  const speed = company.core ? .042 : .014 + (signature % 7) * .003
+  return elapsed * speed * direction
+}
+
+function orbitPositionAt(company: PositionedCompany, elapsed: number): [number, number, number] {
+  if (company.domain === 'shared') return company.position
+  const center = GALAXY_CENTERS[company.domain]
+  const angle = orbitAngle(company, elapsed)
+  const cosine = Math.cos(angle)
+  const sine = Math.sin(angle)
+  const relativeX = company.position[0] - center[0]
+  const relativeZ = company.position[2] - center[2]
+  return [
+    center[0] + relativeX * cosine + relativeZ * sine,
+    company.position[1],
+    center[2] - relativeX * sine + relativeZ * cosine,
+  ]
 }
 
 const GALAXY_CENTERS = {
@@ -110,9 +138,9 @@ function NodeGeometry({ category }: { category: CompanyCategory }) {
   return <boxGeometry args={[.68, .52, .68]}/>
 }
 
-function CompanyNode({ company, selected, dimmed, onSelect }: { company: PositionedCompany; selected: boolean; dimmed: boolean; onSelect: (id: string) => void }) {
+function CompanyNode({ company, position = company.position, selected, dimmed, onSelect }: { company: PositionedCompany; position?: [number, number, number]; selected: boolean; dimmed: boolean; onSelect: (id: string) => void }) {
   const color = DOMAIN_COLORS[company.domain]
-  return <group position={company.position}>
+  return <group position={position}>
     <mesh scale={(selected ? 1.35 : 1) * (company.core ? 1.28 : 1)} onClick={(event) => { event.stopPropagation(); onSelect(company.id) }} onPointerOver={() => { document.body.style.cursor = 'pointer' }} onPointerOut={() => { document.body.style.cursor = 'default' }}>
       <NodeGeometry category={company.category}/>
       <meshStandardMaterial color={color} emissive={color} emissiveIntensity={selected ? .72 : company.core ? .24 : .08} roughness={.42} metalness={.24} transparent opacity={dimmed ? .09 : 1}/>
@@ -123,6 +151,7 @@ function CompanyNode({ company, selected, dimmed, onSelect }: { company: Positio
         <b>{company.name}</b><span>{company.domain === 'shared' ? 'CROSS-INDUSTRY' : company.core ? 'GALAXY CORE' : company.role}</span>
       </button>
     </Html>}
+    {selected && !dimmed && <pointLight color={color} intensity={6} distance={5}/>}
   </group>
 }
 
@@ -147,12 +176,35 @@ function Galaxy({ domain }: { domain: 'semiconductor' | 'display' }) {
   </group>
 }
 
-function KnowledgeGraph({ companies, selectedId, onSelect }: { companies: PositionedCompany[]; selectedId: string; onSelect: (id: string) => void }) {
-  const selected = companies.find((company) => company.id === selectedId)
+function KnowledgeGraph({ companies, selectedId, motionEnabled, onSelect }: { companies: PositionedCompany[]; selectedId: string; motionEnabled: boolean; onSelect: (id: string) => void }) {
   const allCompanies = useMemo(() => positionCompanies(INDUSTRY_COMPANIES), [])
   const visibleIds = new Set(companies.map((company) => company.id))
   const companyById = new Map(allCompanies.map((company) => [company.id, company]))
   const shared = allCompanies.filter((company) => company.domain === 'shared')
+  const orbitGroups = useRef(new Map<string, Group>())
+  const relationLines = useRef(new Map<string, Line2>())
+  const elapsedOrbitTime = useRef(0)
+
+  useFrame((_, delta) => {
+    if (!motionEnabled) return
+    elapsedOrbitTime.current += Math.min(delta, .05)
+    allCompanies.forEach((company) => {
+      if (company.domain === 'shared') return
+      const group = orbitGroups.current.get(company.id)
+      if (group) group.rotation.y = orbitAngle(company, elapsedOrbitTime.current)
+    })
+    VERIFIED_RELATIONS.forEach((relation) => {
+      const from = companyById.get(relation.from)
+      const to = companyById.get(relation.to)
+      const line = relationLines.current.get(`${relation.from}-${relation.to}`)
+      if (!from || !to || !line) return
+      const fromPosition = orbitPositionAt(from, elapsedOrbitTime.current)
+      const toPosition = orbitPositionAt(to, elapsedOrbitTime.current)
+      line.geometry.setPositions([...fromPosition, ...toPosition])
+      line.computeLineDistances()
+    })
+  })
+
   return <>
     <color attach="background" args={['#06131c']}/><fog attach="fog" args={['#06131c', 24, 42]}/>
     <ambientLight intensity={1.18}/><directionalLight position={[3, 12, 7]} intensity={1.5}/>
@@ -164,10 +216,12 @@ function KnowledgeGraph({ companies, selectedId, onSelect }: { companies: Positi
     <Line points={[[0, .15, -4.8], [0, .15, 4.8]]} color={DOMAIN_COLORS.shared} lineWidth={2.2} dashed dashSize={.25} gapSize={.16} transparent opacity={.42}/>
     {allCompanies.map((company) => {
       const dimmed = !visibleIds.has(company.id)
-      const center = company.domain === 'display' ? GALAXY_CENTERS.display : company.domain === 'semiconductor' ? GALAXY_CENTERS.semiconductor : [0, .2, company.position[2]] as [number, number, number]
-      return <group key={company.id}>
-        {company.domain !== 'shared' && <Line points={[center, company.position]} color={DOMAIN_COLORS[company.domain]} lineWidth={company.core ? 1.25 : .55} transparent opacity={dimmed ? .04 : company.core ? .42 : .18}/>}
-        <CompanyNode company={company} selected={selectedId === company.id} dimmed={dimmed} onSelect={onSelect}/>
+      if (company.domain === 'shared') return <CompanyNode key={company.id} company={company} selected={selectedId === company.id} dimmed={dimmed} onSelect={onSelect}/>
+      const center = GALAXY_CENTERS[company.domain]
+      const relativePosition: [number, number, number] = [company.position[0] - center[0], company.position[1] - center[1], company.position[2] - center[2]]
+      return <group key={company.id} position={center} ref={(group) => { if (group) orbitGroups.current.set(company.id, group); else orbitGroups.current.delete(company.id) }}>
+        <Line points={[[0, 0, 0], relativePosition]} color={DOMAIN_COLORS[company.domain]} lineWidth={company.core ? 1.25 : .55} transparent opacity={dimmed ? .04 : company.core ? .42 : .18}/>
+        <CompanyNode company={company} position={relativePosition} selected={selectedId === company.id} dimmed={dimmed} onSelect={onSelect}/>
       </group>
     })}
     {VERIFIED_RELATIONS.map((relation) => {
@@ -178,7 +232,14 @@ function KnowledgeGraph({ companies, selectedId, onSelect }: { companies: Positi
       const nonCommercial = relation.kind === 'collaboration' || relation.kind === 'certification'
       return <Line
         key={`${relation.from}-${relation.to}`}
-        points={[from.position, to.position]}
+        ref={(line) => {
+          const key = `${relation.from}-${relation.to}`
+          if (line) {
+            line.frustumCulled = false
+            relationLines.current.set(key, line as Line2)
+          } else relationLines.current.delete(key)
+        }}
+        points={[orbitPositionAt(from, elapsedOrbitTime.current), orbitPositionAt(to, elapsedOrbitTime.current)]}
         color={RELATION_COLORS[relation.kind]}
         lineWidth={active ? relationLineWidth(relation.strength, highlighted) : .42}
         dashed={nonCommercial}
@@ -188,7 +249,6 @@ function KnowledgeGraph({ companies, selectedId, onSelect }: { companies: Positi
         opacity={active ? highlighted ? .96 : .25 + relation.strength * .055 : .05}
       />
     })}
-    {selected && <pointLight position={selected.position} color={DOMAIN_COLORS[selected.domain]} intensity={6} distance={5}/>}
     <ContactShadows position={[0, .02, 0]} opacity={.22} scale={28} blur={3} far={12}/>
     <OrbitControls makeDefault target={[0, .25, 0]} minDistance={13} maxDistance={42} minPolarAngle={.18} maxPolarAngle={Math.PI / 2.08} enableDamping dampingFactor={.08}/>
   </>
@@ -233,6 +293,8 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
   const [query, setQuery] = useState('')
   const [domain, setDomain] = useState<'all' | IndustryDomain>('all')
   const [region, setRegion] = useState<RegionFilter>('all')
+  const [orbiting, setOrbiting] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [pageVisible, setPageVisible] = useState(() => document.visibilityState === 'visible')
   const webgl = useMemo(supportsWebGL, [])
   const filtered = useMemo(() => positioned.filter((company) => {
     const matchesDomain = domain === 'all' || company.domain === domain
@@ -243,17 +305,23 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
   }), [domain, positioned, query, region])
   const selected = INDUSTRY_COMPANIES.find((company) => company.id === selectedId) ?? INDUSTRY_COMPANIES[0]
   useEffect(() => { if (filtered.length > 0 && !filtered.some((company) => company.id === selectedId)) setSelectedId(filtered[0].id) }, [filtered, selectedId])
+  useEffect(() => {
+    const onVisibilityChange = () => setPageVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
+  const motionEnabled = orbiting && pageVisible
 
   return <main className="industry-map-shell">
     {/* THESIS: 두 산업을 별도 은하로 보되 공통 장비·소재 기업을 중앙의 단일 노드로 연결한다. */}
     <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
-        <div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>연결선 굵기 = 공개 관계 강도 · 점선 = 공동개발·인증</small></div>
+        <div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>행성 공전 {motionEnabled ? 'ON' : 'PAUSED'} · 연결선은 실시간 추적</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
         <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공개 관계 · 굵기 1–5</span></div>
         <MapErrorBoundary fallback={<FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}>
-          {webgl ? <Canvas camera={{ position: [0, 38, 13], fov: 48 }} dpr={[1, 1.25]} frameloop="demand"><KnowledgeGraph companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
+          {webgl ? <Canvas camera={{ position: [0, 38, 13], fov: 48 }} dpr={[1, 1.25]} frameloop={motionEnabled ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
         </MapErrorBoundary>
         {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all'); setRegion('all') }}>필터 초기화</button></div>}
       </section>

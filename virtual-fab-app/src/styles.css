@@ -153,6 +153,9 @@ footer p { margin: 0; }.loading { min-height: 100vh; display: grid; place-conten
 .industry-map-status span { color:#ffca57; font:800 .58rem/1 var(--narrow); letter-spacing:.1em; }
 .industry-map-status b { font-size:.72rem; }
 .industry-map-status small { color:#9ebfc1; font-size:.58rem; line-height:1.35; }
+.industry-map-status button { width:max-content; min-height:30px; margin-top:4px; padding:0 9px; border:1px solid #6f9297; color:#dff5f4; background:#12343c; font-size:.56rem; font-weight:800; cursor:pointer; pointer-events:auto; }
+.industry-map-status button:hover { border-color:#ffca57; color:#ffca57; }
+.industry-map-status button:focus-visible { outline:3px solid #fff; outline-offset:2px; }
 .industry-map-legend { position:absolute; z-index:3; right:18px; bottom:18px; display:grid; grid-template-columns:repeat(2,auto); gap:7px 13px; padding:10px 12px; color:#dff5f4; background:rgba(7,29,36,.91); pointer-events:none; }
 .industry-map-legend span { display:flex; align-items:center; gap:6px; font-size:.56rem; }
 .industry-map-legend i { width:9px; height:9px; background:var(--legend-color); }
@@ -168,7 +171,7 @@ footer p { margin: 0; }.loading { min-height: 100vh; display: grid; place-conten
 .industry-node-label.semiconductor { border-color:#247d89; }.industry-node-label.display { border-color:#874b9b; }.industry-node-label.shared { min-width:112px; border-color:#ffc857; box-shadow:0 0 22px rgba(255,200,87,.18); }
 .industry-galaxy-core { display:grid; min-width:128px; gap:3px; padding:10px 13px; border:1px solid currentColor; color:#fff; background:rgba(6,19,28,.88); text-align:center; pointer-events:none; }
 .industry-galaxy-core b { font:900 12px/1 var(--narrow); letter-spacing:.08em; }.industry-galaxy-core span { color:#adc6cb; font-size:7px; letter-spacing:.05em; }.industry-galaxy-core.semiconductor { color:#29c5d6; }.industry-galaxy-core.display { color:#d86cff; }
-.industry-galaxy-guide { position:absolute; z-index:3; top:102px; left:18px; display:grid; width:194px; color:#d8eded; background:rgba(7,29,36,.91); pointer-events:none; }
+.industry-galaxy-guide { position:absolute; z-index:3; top:138px; left:18px; display:grid; width:194px; color:#d8eded; background:rgba(7,29,36,.91); pointer-events:none; }
 .industry-galaxy-guide > div { display:grid; gap:3px; padding:9px 11px; border-top:3px solid; }.industry-galaxy-guide b { font-size:.62rem; }.industry-galaxy-guide span { color:#83a5a8; font-size:.48rem; letter-spacing:.04em; }.industry-galaxy-guide .semiconductor { border-top-color:#29c5d6; }.industry-galaxy-guide .shared { border-top-color:#ffc857; }.industry-galaxy-guide .display { border-top-color:#d86cff; }
 .industry-map-legend .verified i { height:3px; background:#cc426d; }
 .industry-map-detail { min-height:0; overflow-y:auto; border-left:1px solid #aebfc2; background:#f7faf9; }
