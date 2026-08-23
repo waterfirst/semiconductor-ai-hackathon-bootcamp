@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { Component, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Group } from 'three'
 import type { Line2 } from 'three-stdlib'
+import { PROCESS_BENCHMARK_ROWS } from './data/industryProcessBenchmark'
 import {
   CATEGORY_LABELS,
   DOMAIN_COLORS,
@@ -19,6 +20,7 @@ import {
 
 type PositionedCompany = IndustryCompany & { position: [number, number, number]; domain: IndustryDomain; core: boolean }
 type RegionFilter = 'all' | 'korea' | 'china' | 'us' | 'europe' | 'japan-taiwan'
+type MapViewMode = 'galaxy' | 'companies' | 'process'
 
 const REGION_LABELS: Record<RegionFilter, string> = {
   all: '전 지역',
@@ -254,8 +256,29 @@ function KnowledgeGraph({ companies, selectedId, motionEnabled, onSelect }: { co
   </>
 }
 
-function FallbackCompanyList({ companies, selectedId, onSelect }: { companies: PositionedCompany[]; selectedId: string; onSelect: (id: string) => void }) {
-  return <div className="industry-map-fallback" role="region" aria-label="3D 지식맵 대체 목록"><strong>이 기기에서는 3D를 열 수 없어 회사 목록으로 보여줘.</strong><div>{companies.map((company) => <button type="button" key={company.id} className={company.id === selectedId ? 'selected' : ''} onClick={() => onSelect(company.id)}><b>{company.name}</b><span>{DOMAIN_LABELS[company.domain]} · {company.role}</span></button>)}</div></div>
+function CompanyList({ companies, selectedId, onSelect, fallback = false }: { companies: PositionedCompany[]; selectedId: string; onSelect: (id: string) => void; fallback?: boolean }) {
+  return <div className="industry-map-fallback" role="region" aria-label="산업 지식맵 회사 목록"><strong>{fallback ? '이 기기에서는 3D 대신 회사 목록을 보여줘.' : '회사를 선택하면 오른쪽에서 제품·공정·직무·공식 근거를 볼 수 있어.'}</strong><div>{companies.map((company) => <button type="button" key={company.id} className={company.id === selectedId ? 'selected' : ''} onClick={() => onSelect(company.id)}><b>{company.name}</b><span>{DOMAIN_LABELS[company.domain]} · {company.role}</span></button>)}</div></div>
+}
+
+function ProcessBenchmark({ onSelectCompany }: { onSelectCompany: (id: string) => void }) {
+  return <section className="industry-process-benchmark" aria-labelledby="process-benchmark-title">
+    <header><div><h2 id="process-benchmark-title">공정별 장비 생태계 참고표</h2><p>노광부터 테스트까지 해외 선도사와 국내 장비사를 한 줄에서 비교해.</p></div><strong>과거 참고자료</strong></header>
+    <div className="industry-process-warning" role="note"><b>해석 주의</b><span>첨부 원문은 기준연도가 표시되지 않았어. 기술수준·부품 국산화율은 현재값이 아니라 당시 자료의 스냅샷이며 투자·구매 판단에는 사용할 수 없어.</span></div>
+    <div className="industry-process-table" role="table" aria-label="국내외 반도체 장비 기업과 국산화 참고자료">
+      <div className="industry-process-row industry-process-head" role="row"><span role="columnheader">공정</span><span role="columnheader">해외 기업</span><span role="columnheader">국내 기업</span><span role="columnheader">기술수준</span><span role="columnheader">부품 국산화</span></div>
+      {PROCESS_BENCHMARK_ROWS.map((row) => <div className="industry-process-row" role="row" key={`${row.stage}-${row.process}`}>
+        <span role="cell"><small>{row.stage}</small><b>{row.process}</b></span>
+        <span role="cell">{row.foreignCompanies.join(' · ')}</span>
+        <span role="cell">{row.koreanCompanies.join(' · ')}{row.mappedCompanyIds.length > 0 && <i>{row.mappedCompanyIds.map((id) => {
+          const company = INDUSTRY_COMPANIES.find((item) => item.id === id)
+          return company ? <button type="button" key={id} onClick={() => onSelectCompany(id)}>{company.name} 지도에서 보기</button> : null
+        })}</i>}</span>
+        <span role="cell"><meter min="0" max="100" value={row.domesticTechnology}>{row.domesticTechnology}%</meter><b>{row.domesticTechnology}%</b></span>
+        <span role="cell"><meter min="0" max="100" value={row.partsLocalization}>{row.partsLocalization}%</meter><b>{row.partsLocalization}%</b></span>
+      </div>)}
+    </div>
+    <footer>출처 표기: 첨부 자료의 “한국산업기술평가원”. 회사명은 원문 표기를 정리했으며 최신성·기관명·기준연도는 추가 검증이 필요해.</footer>
+  </section>
 }
 
 function CompanyReport({ company }: { company: IndustryCompany }) {
@@ -293,6 +316,8 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
   const [query, setQuery] = useState('')
   const [domain, setDomain] = useState<'all' | IndustryDomain>('all')
   const [region, setRegion] = useState<RegionFilter>('all')
+  const [viewMode, setViewMode] = useState<MapViewMode>(() => window.matchMedia('(max-width: 760px)').matches ? 'companies' : 'galaxy')
+  const [galaxyMounted, setGalaxyMounted] = useState(() => !window.matchMedia('(max-width: 760px)').matches)
   const [orbiting, setOrbiting] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [pageVisible, setPageVisible] = useState(() => document.visibilityState === 'visible')
   const webgl = useMemo(supportsWebGL, [])
@@ -310,18 +335,20 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
+  useEffect(() => { if (viewMode === 'galaxy') setGalaxyMounted(true) }, [viewMode])
   const motionEnabled = orbiting && pageVisible
+  const selectFromReference = (id: string) => { setSelectedId(id); setViewMode('galaxy') }
 
   return <main className="industry-map-shell">
     {/* THESIS: 두 산업을 별도 은하로 보되 공통 장비·소재 기업을 중앙의 단일 노드로 연결한다. */}
-    <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></header>
+    <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-toolbar"><nav className="industry-map-view-switch" aria-label="산업 지식맵 보기 방식"><button type="button" aria-pressed={viewMode === 'galaxy'} onClick={() => setViewMode('galaxy')}>3D 은하</button><button type="button" aria-pressed={viewMode === 'companies'} onClick={() => setViewMode('companies')}>회사 목록</button><button type="button" aria-pressed={viewMode === 'process'} onClick={() => setViewMode('process')}>공정 장비표</button></nav><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
-        <div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>행성 공전 {motionEnabled ? 'ON' : 'PAUSED'} · 연결선은 실시간 추적</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
+        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>행성 공전 {motionEnabled ? 'ON' : 'PAUSED'} · 연결선은 실시간 추적</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
-        <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공개 관계 · 굵기 1–5</span></div>
-        <MapErrorBoundary fallback={<FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}>
-          {webgl ? <Canvas camera={{ position: [0, 38, 13], fov: 48 }} dpr={[1, 1.25]} frameloop={motionEnabled ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
+        <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공개 관계 · 굵기 1–5</span></div></>}
+        <MapErrorBoundary fallback={<CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}>
+          <>{galaxyMounted && <div className={`industry-map-canvas ${viewMode === 'galaxy' ? '' : 'is-hidden'}`} aria-hidden={viewMode !== 'galaxy'}>{webgl ? <Canvas camera={{ position: [0, 27, 22], fov: 44 }} dpr={[1, 1.25]} frameloop={motionEnabled && viewMode === 'galaxy' ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled && viewMode === 'galaxy'} onSelect={setSelectedId}/></Canvas> : <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}</div>}{viewMode === 'process' ? <ProcessBenchmark onSelectCompany={selectFromReference}/> : viewMode === 'companies' ? <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/> : null}</>
         </MapErrorBoundary>
         {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all'); setRegion('all') }}>필터 초기화</button></div>}
       </section>
