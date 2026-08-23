@@ -2,6 +2,7 @@ export type CompanyCategory = 'design' | 'fabless' | 'manufacturing' | 'equipmen
 
 export type IndustrySource = { label: string; url: string }
 export type ValueLayerId = 'foundations' | 'equipment' | 'memory' | 'integration' | 'demand'
+export type IndustryDomain = 'semiconductor' | 'shared' | 'display'
 
 export type IndustryCompany = {
   id: string
@@ -38,6 +39,29 @@ export const CATEGORY_COLORS: Record<CompanyCategory, string> = {
   equipment: '#d47b13',
   materials: '#879523',
   packaging: '#b55270',
+}
+
+export const DOMAIN_LABELS: Record<IndustryDomain, string> = {
+  semiconductor: '반도체 은하',
+  shared: '공통 기술 브리지',
+  display: '디스플레이 은하',
+}
+
+export const DOMAIN_COLORS: Record<IndustryDomain, string> = {
+  semiconductor: '#29c5d6',
+  shared: '#ffc857',
+  display: '#d86cff',
+}
+
+const DISPLAY_COMPANY_IDS = new Set([
+  'samsung-display', 'lg-display', 'boe', 'tcl-csot', 'canon-tokki', 'corning', 'universal-display',
+])
+const SHARED_COMPANY_IDS = new Set(['applied-materials', 'screen', 'ulvac'])
+
+export function getCompanyDomain(companyId: string): IndustryDomain {
+  if (SHARED_COMPANY_IDS.has(companyId)) return 'shared'
+  if (DISPLAY_COMPANY_IDS.has(companyId)) return 'display'
+  return 'semiconductor'
 }
 
 export const PROCESS_HUBS = [
@@ -114,10 +138,10 @@ export const INDUSTRY_COMPANIES: IndustryCompany[] = [
   },
   {
     id: 'applied-materials', name: 'Applied Materials', country: 'United States', category: 'equipment', hub: 'materialsEngineering', status: 'deep',
-    role: '증착·식각·CMP·이온주입·검사·패키징',
-    summary: '재료를 만들고, 깎고, 바꾸고, 측정하는 폭넓은 장비를 바탕으로 transistor·interconnect·memory·advanced packaging 공정을 공동최적화한다.',
-    products: ['CVD·PVD·ALD·Epitaxy', 'Etch·CMP', 'Ion implant·Thermal', 'Inspection·Advanced packaging'],
-    processes: ['DEPOSITION', 'ETCH', 'CMP', 'IMPLANT', 'PACKAGING'],
+    role: '반도체·디스플레이 증착·패터닝 장비',
+    summary: '반도체에서는 transistor·interconnect·memory·advanced packaging 공정을, 디스플레이에서는 TFT array와 OLED 증착·봉지를 지원하는 두 산업의 공통 장비기업.',
+    products: ['반도체 CVD·PVD·Etch·CMP', 'OLED Deposition·Encapsulation', 'Display CVD·PVD·eBeam review', 'Advanced packaging'],
+    processes: ['SEMICONDUCTOR DEPOSITION', 'OLED DEPOSITION', 'ETCH', 'CMP', 'DISPLAY ARRAY'],
     jobs: ['공정·장비', '재료·Plasma', 'Application', '필드서비스·Supplier quality'],
     risks: ['설비투자 사이클', '고객·지역 집중', '미국 수출통제', '세부공정 전문기업 경쟁'],
     metrics: [
@@ -133,6 +157,7 @@ export const INDUSTRY_COMPANIES: IndustryCompany[] = [
     ],
     sources: [
       { label: 'Applied 반도체 제품', url: 'https://www.appliedmaterials.com/us/en/semiconductor/products.html' },
+      { label: 'Applied 디스플레이 제품', url: 'https://www.appliedmaterials.com/us/en/display.html' },
       { label: 'Applied FY2026 Q3 실적', url: 'https://ir.appliedmaterials.com/news-releases/news-release-details/applied-materials-announces-third-quarter-2026-results' },
       { label: 'Applied 2025 Form 10-K', url: 'https://www.sec.gov/Archives/edgar/data/6951/000162828025056742/amat-20251026.htm' },
     ],
@@ -142,7 +167,7 @@ export const INDUSTRY_COMPANIES: IndustryCompany[] = [
   { id: 'tel', name: 'Tokyo Electron', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '코터·디벨로퍼부터 식각·증착까지', summary: 'Photo track과 thermal·etch·deposition·clean을 폭넓게 연결하는 일본 종합 장비기업.', products: ['Coater/Developer', 'Etch', 'Deposition', 'Thermal'], processes: ['PHOTO TRACK', 'ETCH', 'DEPOSITION'], jobs: ['Process', 'Equipment', 'Field service'], risks: ['설비투자 사이클', '수출규제'], sources: [{ label: 'Tokyo Electron 공식', url: 'https://www.tel.com/' }] },
   { id: 'kla', name: 'KLA', country: 'United States', category: 'equipment', hub: 'lithography', status: 'profile', role: '검사·계측·공정제어', summary: '결함을 찾고 치수·막·overlay를 측정해 수율학습 속도를 높이는 process control 후보군.', products: ['Inspection', 'Metrology', 'Data analytics'], processes: ['DEFECT', 'METROLOGY', 'YIELD'], jobs: ['Optics', 'Algorithm', 'Application'], risks: ['선단 고객집중', '수출통제'], sources: [{ label: 'KLA 공식', url: 'https://www.kla.com/' }] },
   { id: 'asm', name: 'ASM International', country: 'Netherlands', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: 'ALD·Epitaxy', summary: '원자층 증착과 epitaxy를 중심으로 선단 transistor의 박막·계면을 제어하는 장비기업.', products: ['ALD', 'Epitaxy'], processes: ['ALD', 'EPI'], jobs: ['Thin film', 'Materials', 'Application'], risks: ['선단 투자집중', '공정경쟁'], sources: [{ label: 'ASM 공식', url: 'https://www.asm.com/' }] },
-  { id: 'screen', name: 'SCREEN SPE', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '웨이퍼 세정', summary: '입자·금속·유기 오염을 제거하고 다음 공정의 계면 품질을 만드는 세정장비 후보군.', products: ['Single wafer clean', 'Batch clean'], processes: ['CLEAN', 'SURFACE PREP'], jobs: ['Chemical process', 'Equipment'], risks: ['Wet chemistry 경쟁', '고객인증'], sources: [{ label: 'SCREEN SPE 공식', url: 'https://www.screen.co.jp/spe/en/' }] },
+  { id: 'screen', name: 'SCREEN Holdings', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '반도체 세정·디스플레이 도포현상', summary: '반도체 wafer 세정과 OLED·LCD용 TFT array coat/develop 장비를 함께 공급하는 공통 공정장비 그룹.', products: ['Wafer clean', 'Coater/Developer', 'OLED·LCD TFT array equipment'], processes: ['SEMICONDUCTOR CLEAN', 'DISPLAY COAT/DEVELOP', 'SURFACE PREP'], jobs: ['Chemical process', 'Equipment', 'Application'], risks: ['설비투자 사이클', '고객인증'], sources: [{ label: 'SCREEN 반도체 제품', url: 'https://www.screen.co.jp/spe/en/' }, { label: 'SCREEN 디스플레이 제품', url: 'https://www.screen.co.jp/ft/en/products/oled' }] },
   { id: 'kokusai', name: 'Kokusai Electric', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '배치 열처리·증착', summary: '다수 wafer를 동시에 처리하는 batch furnace와 deposition 공정 후보군.', products: ['Batch furnace', 'Deposition'], processes: ['DIFFUSION', 'DEPOSITION'], jobs: ['Thermal process', 'Equipment'], risks: ['Memory 사이클', 'Batch 균일도'], sources: [{ label: 'Kokusai Electric 공식', url: 'https://www.kokusai-electric.com/en/' }] },
   { id: 'axcelis', name: 'Axcelis', country: 'United States', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '이온주입', summary: '불순물의 dose·energy·angle을 제어해 소자의 전기적 특성을 형성하는 implant 장비기업.', products: ['Ion implanter'], processes: ['IMPLANT'], jobs: ['Beam physics', 'Process', 'Field service'], risks: ['전력반도체·메모리 투자변동', '고객집중'], sources: [{ label: 'Axcelis 공식', url: 'https://www.axcelis.com/' }] },
   { id: 'zeiss', name: 'ZEISS SMT', country: 'Germany', category: 'materials', hub: 'lithography', status: 'profile', role: 'EUV·DUV 초정밀 광학계', summary: '노광기의 렌즈·다층반사거울과 계측광학을 공급하는 핵심 부품 생태계.', products: ['Projection optics', 'EUV mirrors'], processes: ['LITHOGRAPHY OPTICS'], jobs: ['Optical engineering', 'Surface metrology'], risks: ['초정밀 생산능력', '단일 생태계 의존'], sources: [{ label: 'ZEISS SMT 공식', url: 'https://www.zeiss.com/semiconductor-manufacturing-technology/home.html' }] },
@@ -166,4 +191,12 @@ export const INDUSTRY_COMPANIES: IndustryCompany[] = [
   { id: 'amkor', name: 'Amkor', country: 'United States', category: 'packaging', hub: 'packaging', status: 'profile', role: 'OSAT·첨단패키징', summary: '외주 assembly·test와 heterogeneous integration을 제공하는 글로벌 후공정 노드.', products: ['Advanced packaging', 'Assembly', 'Test'], processes: ['PACKAGING', 'TEST'], jobs: ['Package design', 'Process', 'Test'], risks: ['고객집중', '공장·지역 투자'], sources: [{ label: 'Amkor 공식', url: 'https://amkor.com/' }] },
   { id: 'advantest', name: 'Advantest', country: 'Japan', category: 'packaging', hub: 'test', status: 'profile', role: '반도체 자동검사장비', summary: '완성 die·package의 전기적 특성과 불량을 고속으로 판정하는 ATE 생태계.', products: ['SoC tester', 'Memory tester'], processes: ['ELECTRICAL TEST'], jobs: ['Test', 'Hardware', 'Application'], risks: ['AI·memory 투자집중', '고객인증'], sources: [{ label: 'Advantest 공식', url: 'https://www.advantest.com/' }] },
   { id: 'teradyne', name: 'Teradyne', country: 'United States', category: 'packaging', hub: 'test', status: 'profile', role: 'ATE·테스트 시스템', summary: 'SoC·memory·wireless 제품의 자동 전기검사와 생산 테스트 솔루션 후보군.', products: ['Semiconductor test', 'System test'], processes: ['ELECTRICAL TEST'], jobs: ['Test engineering', 'Application'], risks: ['테스트 사이클', '고객집중'], sources: [{ label: 'Teradyne 공식', url: 'https://www.teradyne.com/' }] },
+  { id: 'samsung-display', name: 'Samsung Display', country: 'South Korea', category: 'manufacturing', hub: 'fab', status: 'deep', role: 'OLED·QD-OLED 패널 제조', summary: '모바일·IT·TV용 OLED를 설계·양산하며 8.6세대 IT OLED 투자로 반도체식 미세공정·수율관리와 디스플레이 대면적 공정을 잇는 핵심 패널사.', products: ['Mobile OLED', 'IT OLED', 'QD-OLED'], processes: ['TFT BACKPLANE', 'OLED EVAPORATION', 'ENCAPSULATION', 'MODULE'], jobs: ['TFT Process', 'OLED Device', 'Yield', 'Module'], risks: ['모바일 고객집중', '8.6세대 수율', '중국 패널 경쟁'], metrics: [{ label: 'IT OLED 투자', value: '₩4.1T', note: '2026년까지 공식 계획' }, { label: '생산 세대', value: '8.6G', note: 'IT OLED 신규 라인' }], sections: [{ title: '디스플레이 은하의 핵', body: 'TFT backplane 위에 유기 발광층을 형성하고 봉지·모듈 공정을 통합해 빛을 내는 제품을 만든다. wafer 대신 대면적 glass를 다루지만 박막·진공·패터닝·검사라는 공정 언어는 반도체와 겹친다.' }, { title: '반도체와 만나는 지점', body: 'LTPS·oxide TFT, OLED 증착, DDI와 timing controller, 검사·보정에서 소재·장비·반도체 업체가 함께 연결된다.' }], sources: [{ label: 'Samsung Display 지속가능경영보고서', url: 'https://www.samsungdisplay.com/kor/file/download/Samsung%20Display%20SR%202023_Eng.pdf' }, { label: 'Samsung Display 공식', url: 'https://www.samsungdisplay.com/' }] },
+  { id: 'lg-display', name: 'LG Display', country: 'South Korea', category: 'manufacturing', hub: 'fab', status: 'deep', role: 'OLED·LCD 패널 제조', summary: '대형 OLED부터 IT·모바일·차량용 Tandem OLED까지 제품군을 전개하는 디스플레이 패널사.', products: ['Large OLED', 'IT·Mobile OLED', 'Automotive Tandem OLED', 'LCD'], processes: ['TFT BACKPLANE', 'OLED STACK', 'ENCAPSULATION', 'MODULE'], jobs: ['Process', 'OLED Device', 'Optics', 'Quality'], risks: ['대형 OLED 수요', '투자·재무 부담', 'LCD·OLED 경쟁'], sections: [{ title: '차량용 기술', body: '두 개의 유기 발광층을 쌓는 Tandem OLED로 밝기·수명·내구성을 높이고, plastic substrate와 결합해 곡면 차량 공간에 적용한다.' }, { title: '교육 포인트', body: '발광재료 수명만이 아니라 TFT 구동, 수분·산소 봉지, 색·휘도 보정, 열과 기계 신뢰성을 함께 판단해야 한다.' }], sources: [{ label: 'LG Display Automotive OLED', url: 'https://www.lgdisplay.com/eng/product/automotive-display/oled' }, { label: 'LG Display 공식', url: 'https://www.lgdisplay.com/eng' }] },
+  { id: 'boe', name: 'BOE', country: 'China', category: 'manufacturing', hub: 'fab', status: 'profile', role: 'LCD·OLED·MLED 패널 제조', summary: 'ADS Pro LCD, flexible OLED, Mini/Micro LED와 차량용 디스플레이를 폭넓게 양산하는 중국 패널 기업.', products: ['ADS Pro LCD', 'Flexible OLED', 'MLED', 'Automotive display'], processes: ['TFT ARRAY', 'OLED', 'CELL', 'MODULE'], jobs: ['Process', 'Device', 'Product', 'Yield'], risks: ['공급과잉', '가격 경쟁', '기술·무역 규제'], sources: [{ label: 'BOE OLED 공식', url: 'https://www.boe.com/global/en/Products_OLED.html' }, { label: 'BOE LCD 공식', url: 'https://www.boe.com/global/en/Products_LCD.html' }] },
+  { id: 'tcl-csot', name: 'TCL CSOT', country: 'China', category: 'manufacturing', hub: 'fab', status: 'profile', role: 'LCD·AMOLED·인쇄 OLED 패널', summary: '대형 LCD, LTPO AMOLED와 인쇄 OLED를 개발·양산하며 여러 form factor의 디스플레이를 공급하는 패널사.', products: ['Large LCD', 'LTPO AMOLED', 'Printed OLED'], processes: ['TFT ARRAY', 'AMOLED', 'PRINTING', 'MODULE'], jobs: ['Process', 'Inkjet/OLED', 'Device', 'Quality'], risks: ['패널 가격', '인쇄 OLED 양산성', '증설 경쟁'], sources: [{ label: 'TCL CSOT AMOLED 공식', url: 'https://en.tclcsot.com/products/351.html' }, { label: 'TCL CSOT 공식', url: 'https://en.tclcsot.com/' }] },
+  { id: 'canon-tokki', name: 'Canon Tokki', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: 'OLED 진공 증착·봉지 장비', summary: '유기재료와 cathode를 정밀 증착하고 mask alignment·기판 이송·봉지를 통합하는 OLED 양산장비 기업.', products: ['ELVESS OLED system', 'Evaporation', 'Encapsulation'], processes: ['OLED EVAPORATION', 'MASK ALIGNMENT', 'ENCAPSULATION'], jobs: ['Vacuum', 'Mechanical', 'Process', 'Field service'], risks: ['OLED 투자 사이클', 'FMM 정렬·대면적화'], sources: [{ label: 'Canon Tokki OLED 장비', url: 'https://tokki.canon/eng/product/el/mass.html' }] },
+  { id: 'ulvac', name: 'ULVAC', country: 'Japan', category: 'equipment', hub: 'materialsEngineering', status: 'profile', role: '반도체·디스플레이 진공 장비', summary: '반도체와 OLED·LCD 생산에 필요한 진공·증착·열처리 장비를 공급해 두 산업의 박막 형성을 잇는다.', products: ['Semiconductor vacuum equipment', 'OLED deposition', 'LCD production equipment'], processes: ['VACUUM', 'PVD', 'OLED DEPOSITION', 'THERMAL'], jobs: ['Vacuum', 'Thin film', 'Equipment', 'Field service'], risks: ['설비투자 사이클', '장비 경쟁', '고객인증'], sources: [{ label: 'ULVAC 디스플레이 장비', url: 'https://www.ulvac.co.jp/en/business/display_energy_production_equipment/' }, { label: 'ULVAC 반도체 장비', url: 'https://www.ulvac.co.jp/en/business/semiconductor_electronic_device_production_equipment/' }] },
+  { id: 'corning', name: 'Corning', country: 'United States', category: 'materials', hub: 'materials', status: 'profile', role: '디스플레이 유리 기판', summary: 'LCD·OLED의 TFT backplane과 color filter를 지지하는 고평탄·고안정 glass substrate를 공급한다.', products: ['EAGLE XG', 'Lotus NXT', 'Display glass substrates'], processes: ['GLASS FORMING', 'TFT SUBSTRATE', 'DISPLAY BACKPLANE'], jobs: ['Glass materials', 'Quality', 'Process', 'Application'], risks: ['패널 투자 사이클', '유리 세대 전환', '고객집중'], sources: [{ label: 'Corning Display Glass', url: 'https://www.corning.com/worldwide/en/products/display-glass/products.html' }] },
+  { id: 'universal-display', name: 'Universal Display', country: 'United States', category: 'materials', hub: 'materials', status: 'profile', role: 'OLED 발광재료·기술', summary: '인광 OLED 재료와 관련 기술을 제공해 OLED 효율·색·수명 성능에 영향을 주는 소재 노드.', products: ['PHOLED materials', 'OLED emitter technology'], processes: ['ORGANIC MATERIAL', 'EMISSIVE LAYER', 'MATERIAL QUALIFICATION'], jobs: ['Organic chemistry', 'Device', 'Application'], risks: ['고객집중', '재료 수명·색 성능', '특허 경쟁'], sources: [{ label: 'Universal Display 공식', url: 'https://oled.com/' }] },
 ]

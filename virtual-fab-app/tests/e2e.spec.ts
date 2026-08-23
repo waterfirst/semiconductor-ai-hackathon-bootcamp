@@ -241,12 +241,13 @@ test('resize and persist the desktop visual and workbench split', async ({ page 
   await expect(page.getByRole('separator', { name: '3D 화면과 작업창 너비 조절' })).toHaveAttribute('aria-valuenow', '50')
 })
 
-test('explore companies in the 3D semiconductor knowledge map', async ({ page }, testInfo) => {
+test('explore companies in the semiconductor and display dual galaxy', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', '데스크톱 3D 노드 탐색은 데스크톱 프로젝트에서 확인')
   const errors: string[] = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   await page.goto('/#industry-map')
-  await expect(page.getByRole('heading', { name: 'Memory 생태계 3D 지식맵' })).toBeVisible()
-  await expect(page.getByLabel('반도체 생태계 3D 지식맵')).toContainText('30 / 30 COMPANIES')
+  await expect(page.getByRole('heading', { name: '반도체 × 디스플레이 산업 은하' })).toBeVisible()
+  await expect(page.getByLabel('반도체와 디스플레이 산업 3D 지식맵')).toContainText('38 / 38 COMPANIES')
   await expect(page.getByRole('heading', { name: 'SK hynix' })).toBeVisible()
   await expect(page.getByText('심층분석 완료')).toBeVisible()
   await expect(page.getByText('16H · 48GB', { exact: true })).toBeVisible()
@@ -260,15 +261,21 @@ test('explore companies in the 3D semiconductor knowledge map', async ({ page },
   await page.getByRole('button', { name: 'Applied Materials 상세보고서 열기' }).click()
   await expect(page.getByRole('heading', { name: 'Applied Materials' })).toBeVisible()
   await expect(page.getByText('$9.115B', { exact: true })).toBeVisible()
-  await page.getByLabel('가치사슬 레이어').selectOption('memory')
-  await expect(page.getByLabel('반도체 생태계 3D 지식맵')).toContainText('3 / 30 COMPANIES')
+  await expect(page.getByText('두 은하의 공통 노드')).toBeVisible()
+  await page.locator('.industry-map-controls select').selectOption('display')
+  await expect(page.getByLabel('반도체와 디스플레이 산업 3D 지식맵')).toContainText('7 / 38 COMPANIES')
+  await page.getByRole('button', { name: 'Samsung Display 상세보고서 열기' }).click()
+  await expect(page.getByRole('heading', { name: 'Samsung Display' })).toBeVisible()
+  await expect(page.getByText('8.6G', { exact: true })).toBeVisible()
+  await page.locator('.industry-map-controls select').selectOption('shared')
+  await expect(page.getByLabel('반도체와 디스플레이 산업 3D 지식맵')).toContainText('3 / 38 COMPANIES')
   expect(errors).toEqual([])
 })
 
 test('knowledge map remains readable on mobile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', '모바일 프로젝트에서만 확인')
   await page.goto('/#industry-map')
-  await expect(page.getByRole('heading', { name: 'Memory 생태계 3D 지식맵' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '반도체 × 디스플레이 산업 은하' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'SK hynix' })).toBeVisible()
   const bodyWidth = await page.locator('body').evaluate((element) => element.scrollWidth)
   expect(bodyWidth).toBeLessThanOrEqual(page.viewportSize()?.width ?? 390)
