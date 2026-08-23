@@ -21,7 +21,8 @@ import {
   type IndustryDomain,
 } from './data/industryCompanies'
 
-type PositionedCompany = IndustryCompany & { position: [number, number, number]; domain: IndustryDomain; core: boolean }
+type SupplyLayer = 'customer' | 'manufacturer' | 'equipment' | 'materials'
+type PositionedCompany = IndustryCompany & { position: [number, number, number]; domain: IndustryDomain; core: boolean; supplyLayer: SupplyLayer }
 type RegionFilter = 'all' | 'korea' | 'china' | 'us' | 'europe' | 'japan-taiwan'
 type MapViewMode = 'galaxy' | 'companies' | 'process'
 
@@ -52,25 +53,21 @@ function orbitSignature(company: IndustryCompany) {
   return [...company.id].reduce((sum, character) => sum + character.charCodeAt(0), 0)
 }
 
-function orbitAngle(company: PositionedCompany, elapsed: number) {
+function layerMotionOffset(company: PositionedCompany, elapsed: number): [number, number, number] {
   const signature = orbitSignature(company)
   const direction = signature % 2 === 0 ? 1 : -1
-  const speed = company.core ? .042 : .014 + (signature % 7) * .003
-  return elapsed * speed * direction
+  const speed = .16 + (signature % 5) * .025
+  const phase = (signature % 17) * .37
+  return [Math.sin(elapsed * speed * direction + phase) * .3, Math.cos(elapsed * speed + phase) * .06, 0]
 }
 
 function orbitPositionAt(company: PositionedCompany, elapsed: number): [number, number, number] {
   if (company.domain === 'shared') return company.position
-  const center = GALAXY_CENTERS[company.domain]
-  const angle = orbitAngle(company, elapsed)
-  const cosine = Math.cos(angle)
-  const sine = Math.sin(angle)
-  const relativeX = company.position[0] - center[0]
-  const relativeZ = company.position[2] - center[2]
+  const [x, y, z] = layerMotionOffset(company, elapsed)
   return [
-    center[0] + relativeX * cosine + relativeZ * sine,
-    company.position[1],
-    center[2] - relativeX * sine + relativeZ * cosine,
+    company.position[0] + x,
+    company.position[1] + y,
+    company.position[2] + z,
   ]
 }
 
@@ -81,51 +78,49 @@ const GALAXY_CENTERS = {
 const SEMICONDUCTOR_CORE = new Set(['samsung', 'sk-hynix', 'micron'])
 const DISPLAY_CORE = new Set(['samsung-display', 'lg-display', 'boe', 'tcl-csot'])
 
-const CATEGORY_LAYER_RADIUS: Record<CompanyCategory, number> = {
-  manufacturing: 2.55,
-  equipment: 3.28,
-  materials: 4.01,
-  packaging: 4.74,
-  design: 5.47,
-  fabless: 6.2,
+const SUPPLY_LAYER_META: Record<SupplyLayer, { label: string; short: string; z: number }> = {
+  customer: { label: '세트·고객·설계', short: 'CUSTOMER / DESIGN', z: 5.1 },
+  manufacturer: { label: '패널·반도체 제조', short: 'PANEL / SEMICONDUCTOR', z: 1.7 },
+  equipment: { label: '설비·패키징·테스트', short: 'EQUIPMENT / INTEGRATION', z: -1.7 },
+  materials: { label: '재료·핵심부품', short: 'MATERIALS / COMPONENTS', z: -5.1 },
 }
 
-function orbitPosition(center: [number, number, number], index: number, count: number, inner: boolean, category: CompanyCategory): [number, number, number] {
-  if (inner) {
-    const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2
-    return [center[0] + Math.cos(angle) * 1.95, 1.05, center[2] + Math.sin(angle) * 1.65]
-  }
-  const radius = CATEGORY_LAYER_RADIUS[category]
-  const layerIndex = Object.keys(CATEGORY_LAYER_RADIUS).indexOf(category)
-  const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2 + layerIndex * .57
-  return [center[0] + Math.cos(angle) * radius * 1.15, .78 + layerIndex * .08, center[2] + Math.sin(angle) * radius]
+function getSupplyLayer(company: IndustryCompany): SupplyLayer {
+  if (company.category === 'fabless' || company.category === 'design') return 'customer'
+  if (company.category === 'manufacturing') return 'manufacturer'
+  if (company.category === 'equipment' || company.category === 'packaging') return 'equipment'
+  return 'materials'
+}
+
+function positionInSupplyLayer(centerX: number, index: number, count: number, layer: SupplyLayer): [number, number, number] {
+  const perRow = 3
+  const row = Math.floor(index / perRow)
+  const rows = Math.max(1, Math.ceil(count / perRow))
+  const rowStart = row * perRow
+  const inRow = Math.min(perRow, count - rowStart)
+  const column = index - rowStart
+  const gap = 3.1
+  const x = centerX + (column - (inRow - 1) / 2) * gap
+  const z = SUPPLY_LAYER_META[layer].z + (row - (rows - 1) / 2) * .46
+  return [x, .82 + row * .1, z]
 }
 
 function positionCompanies(companies: IndustryCompany[]) {
-  const semi = companies.filter((company) => getCompanyDomain(company.id) === 'semiconductor')
-  const display = companies.filter((company) => getCompanyDomain(company.id) === 'display')
   const shared = companies.filter((company) => getCompanyDomain(company.id) === 'shared')
-  const semiCore = semi.filter((company) => SEMICONDUCTOR_CORE.has(company.id))
-  const semiOrbit = semi.filter((company) => !SEMICONDUCTOR_CORE.has(company.id))
-  const displayCore = display.filter((company) => DISPLAY_CORE.has(company.id))
-  const displayOrbit = display.filter((company) => !DISPLAY_CORE.has(company.id))
   return companies.map((company) => {
     const domain = getCompanyDomain(company.id)
     const core = SEMICONDUCTOR_CORE.has(company.id) || DISPLAY_CORE.has(company.id)
+    const supplyLayer = getSupplyLayer(company)
     let position: [number, number, number]
     if (domain === 'shared') {
-      const index = shared.findIndex((item) => item.id === company.id)
-      position = [0, 1.25 + (index % 2) * .28, (index - (shared.length - 1) / 2) * 2.7]
-    } else if (domain === 'semiconductor') {
-      const group = core ? semiCore : semiOrbit
-      const layer = core ? group : group.filter((item) => item.category === company.category)
-      position = orbitPosition(GALAXY_CENTERS.semiconductor, layer.findIndex((item) => item.id === company.id), layer.length, core, company.category)
+      const layer = shared.filter((item) => getSupplyLayer(item) === supplyLayer)
+      const index = layer.findIndex((item) => item.id === company.id)
+      position = [(index - (layer.length - 1) / 2) * 1.3, 2.5 + (index % 2) * .32, SUPPLY_LAYER_META[supplyLayer].z]
     } else {
-      const group = core ? displayCore : displayOrbit
-      const layer = core ? group : group.filter((item) => item.category === company.category)
-      position = orbitPosition(GALAXY_CENTERS.display, layer.findIndex((item) => item.id === company.id), layer.length, core, company.category)
+      const layer = companies.filter((item) => getCompanyDomain(item.id) === domain && getSupplyLayer(item) === supplyLayer)
+      position = positionInSupplyLayer(GALAXY_CENTERS[domain][0], layer.findIndex((item) => item.id === company.id), layer.length, supplyLayer)
     }
-    return { ...company, position, domain, core }
+    return { ...company, position, domain, core, supplyLayer }
   })
 }
 
@@ -163,7 +158,7 @@ function CompanyNode({ company, position = company.position, selected, dimmed, o
       <meshStandardMaterial color={categoryColor} emissive={domainColor} emissiveIntensity={selected ? .68 : company.core ? .22 : .1} roughness={.4} metalness={.26} transparent opacity={dimmed ? .09 : 1}/>
     </mesh>
     {!dimmed && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.38 * planetScale, 0]}><ringGeometry args={[.5 * planetScale, .59 * planetScale, 40]}/><meshBasicMaterial color={selected ? '#ffffff' : domainColor} transparent opacity={selected || company.domain === 'shared' ? .95 : .64}/></mesh>}
-    {!dimmed && showLabel && <Html position={[0, .62 + planetScale * .34, 0]} center zIndexRange={[30, 1]}>
+    {!dimmed && showLabel && <Html position={[0, .62 + planetScale * .34, 0]} center zIndexRange={selected ? [100, 50] : [30, 1]} style={{ pointerEvents: 'none' }}>
       <button type="button" className={`industry-node-label ${selected ? 'selected' : ''} ${company.core ? 'core' : ''} ${company.domain}`} onClick={() => onSelect(company.id)} aria-label={`${company.name} 상세보고서 열기`} aria-pressed={selected}>
         <b>{company.name}</b><span>{CATEGORY_LABELS[company.category]} · {revenue.tier === 0 ? '매출 미확인' : revenue.label.replace('연매출 ', '')}</span>
       </button>
@@ -172,21 +167,14 @@ function CompanyNode({ company, position = company.position, selected, dimmed, o
   </group>
 }
 
-function spiralPoints(center: [number, number, number], arm: number) {
-  return Array.from({ length: 40 }, (_, index) => {
-    const t = index / 39
-    const angle = t * Math.PI * 2.1 + arm * Math.PI
-    const radius = .75 + t * 4.65
-    return [center[0] + Math.cos(angle) * radius * 1.18, .12, center[2] + Math.sin(angle) * radius] as [number, number, number]
-  })
-}
-
 function Galaxy({ domain }: { domain: 'semiconductor' | 'display' }) {
   const center = GALAXY_CENTERS[domain]
   const color = DOMAIN_COLORS[domain]
   return <group>
-    {[0, 1].map((arm) => <Line key={arm} points={spiralPoints(center, arm)} color={color} lineWidth={1.25} transparent opacity={.28}/>)}
-    {Object.entries(CATEGORY_LAYER_RADIUS).map(([category, radius]) => <mesh key={category} position={center} rotation={[-Math.PI / 2, 0, 0]} scale={[1.15, 1, 1]}><ringGeometry args={[radius - .025, radius + .025, 96]}/><meshBasicMaterial color={CATEGORY_COLORS[category as CompanyCategory]} transparent opacity={.2}/></mesh>)}
+    {Object.entries(SUPPLY_LAYER_META).map(([layer, meta]) => <group key={layer}>
+      <Line points={[[center[0] - 4.65, .1, meta.z], [center[0] + 4.65, .1, meta.z]]} color={color} lineWidth={1.2} dashed dashSize={.24} gapSize={.16} transparent opacity={.32}/>
+      <Html position={[center[0] - 4.35, .22, meta.z]} center zIndexRange={[4, 1]}><div className={`industry-z-layer ${domain}`}><b>{meta.label}</b><span>{meta.short}</span></div></Html>
+    </group>)}
     <mesh position={center} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.7, 1.12, 64]}/><meshBasicMaterial color={color} transparent opacity={.34}/></mesh>
     <pointLight position={[center[0], 1.2, center[2]]} color={color} intensity={8} distance={7}/>
     <Sparkles count={70} scale={[9, .7, 9]} position={[center[0], .55, center[2]]} size={1.25} speed={0} color={color}/>
@@ -209,7 +197,11 @@ function KnowledgeGraph({ companies, selectedId, motionEnabled, onSelect }: { co
     allCompanies.forEach((company) => {
       if (company.domain === 'shared') return
       const group = orbitGroups.current.get(company.id)
-      if (group) group.rotation.y = orbitAngle(company, elapsedOrbitTime.current)
+      if (group) {
+        const center = GALAXY_CENTERS[company.domain]
+        const [x, y, z] = layerMotionOffset(company, elapsedOrbitTime.current)
+        group.position.set(center[0] + x, center[1] + y, center[2] + z)
+      }
     })
     VERIFIED_RELATIONS.forEach((relation) => {
       const from = companyById.get(relation.from)
@@ -385,16 +377,17 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
     <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-toolbar"><nav className="industry-map-view-switch" aria-label="산업 지식맵 보기 방식"><button type="button" aria-pressed={viewMode === 'galaxy'} onClick={() => setViewMode('galaxy')}>3D 은하</button><button type="button" aria-pressed={viewMode === 'companies'} onClick={() => setViewMode('companies')}>회사 목록</button><button type="button" aria-pressed={viewMode === 'process'} onClick={() => setViewMode('process')}>공정 장비표</button></nav><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
-        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>대형·핵심 회사명만 표시</b><small>작은 행성 클릭 → 회사명·보고서 · 공전 {motionEnabled ? 'ON' : 'PAUSED'}</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
+        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>Z축 4단 공급망 · 대형회사명 표시</b><small>작은 행성 클릭 → 회사명·보고서 · 레이어 이동 {motionEnabled ? 'ON' : 'PAUSED'}</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
         <div className="industry-map-legend" aria-label="산업·업종·매출 범례">
           <div className="industry-legend-domains">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i className="domain-ring" style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}</div>
+          <div className="industry-legend-zlayers"><b>Z축 공급망</b>{Object.entries(SUPPLY_LAYER_META).map(([key, meta], index) => <span key={key}><i style={{ '--layer-order': index + 1 } as CSSProperties}/>{meta.label}</span>)}</div>
           <div className="industry-legend-categories">{Object.entries(CATEGORY_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': CATEGORY_COLORS[key as CompanyCategory] } as CSSProperties}/>{label}</span>)}</div>
           <div className="industry-legend-scale"><b>행성 크기 = 최근 공개 연매출</b>{REVENUE_LEGEND.map((item) => <span key={item.tier}><i style={{ '--scale': item.scale } as CSSProperties}/>{item.label.replace('연매출 ', '')}</span>)}</div>
           <span className="verified"><i/>공개 관계 · 굵기 1–5</span>
         </div></>}
         <MapErrorBoundary fallback={<CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}>
-          <>{galaxyMounted && <div className={`industry-map-canvas ${viewMode === 'galaxy' ? '' : 'is-hidden'}`} aria-hidden={viewMode !== 'galaxy'}>{webgl ? <Canvas camera={{ position: [0, 39, 18], fov: 48 }} dpr={[1, 1.25]} frameloop={motionEnabled && viewMode === 'galaxy' ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled && viewMode === 'galaxy'} onSelect={setSelectedId}/></Canvas> : <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}</div>}{viewMode === 'process' ? <ProcessBenchmark onSelectCompany={selectFromReference}/> : viewMode === 'companies' ? <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/> : null}</>
+          <>{galaxyMounted && <div className={`industry-map-canvas ${viewMode === 'galaxy' ? '' : 'is-hidden'}`} aria-hidden={viewMode !== 'galaxy'}>{webgl ? <Canvas camera={{ position: [0, 30, 13], fov: 45 }} dpr={[1, 1.25]} frameloop={motionEnabled && viewMode === 'galaxy' ? 'always' : 'demand'}><KnowledgeGraph companies={filtered} selectedId={selectedId} motionEnabled={motionEnabled && viewMode === 'galaxy'} onSelect={setSelectedId}/></Canvas> : <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId} fallback/>}</div>}{viewMode === 'process' ? <ProcessBenchmark onSelectCompany={selectFromReference}/> : viewMode === 'companies' ? <CompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/> : null}</>
         </MapErrorBoundary>
         {filtered.length === 0 && <div className="industry-map-empty"><b>일치하는 회사가 없어.</b><button type="button" onClick={() => { setQuery(''); setDomain('all'); setRegion('all') }}>필터 초기화</button></div>}
       </section>
