@@ -3,6 +3,20 @@ export type CompanyCategory = 'design' | 'fabless' | 'manufacturing' | 'equipmen
 export type IndustrySource = { label: string; url: string }
 export type ValueLayerId = 'foundations' | 'equipment' | 'memory' | 'integration' | 'demand'
 export type IndustryDomain = 'semiconductor' | 'shared' | 'display'
+export type RelationStrength = 1 | 2 | 3 | 4 | 5
+export type RelationKind = 'ownership' | 'supply' | 'manufacturing' | 'collaboration' | 'certification'
+
+export type IndustryRelation = {
+  from: string
+  to: string
+  label: string
+  source: string
+  strength: RelationStrength
+  kind: RelationKind
+  evidence: string
+  disclosedScale?: string
+  asOf: string
+}
 
 export type IndustryCompany = {
   id: string
@@ -53,6 +67,22 @@ export const DOMAIN_COLORS: Record<IndustryDomain, string> = {
   display: '#d86cff',
 }
 
+export const RELATION_KIND_LABELS: Record<RelationKind, string> = {
+  ownership: '지분·계열',
+  supply: '공급·구매',
+  manufacturing: '위탁생산·패키징',
+  collaboration: '공동개발·전략협력',
+  certification: '공정인증·설계생태계',
+}
+
+export const RELATION_COLORS: Record<RelationKind, string> = {
+  ownership: '#ffc857',
+  supply: '#ff4f8b',
+  manufacturing: '#30d4e5',
+  collaboration: '#ff9f43',
+  certification: '#b98cff',
+}
+
 const DISPLAY_COMPANY_IDS = new Set([
   'samsung-display', 'lg-display', 'boe', 'tcl-csot', 'canon-tokki', 'corning', 'universal-display',
 ])
@@ -100,12 +130,113 @@ export function getCompanyLayer(companyId: string): ValueLayerId {
   return (Object.entries(COMPANY_LAYERS).find(([, ids]) => ids.includes(companyId))?.[0] as ValueLayerId | undefined) ?? 'foundations'
 }
 
-export const VERIFIED_RELATIONS = [
-  { from: 'sk-hynix', to: 'tsmc', label: 'HBM4 base die·CoWoS 협력', source: 'https://news.skhynix.com/sk-hynix-partners-with-tsmc-to-strengthen-hbm-technological-leadership/' },
-  { from: 'sk-hynix', to: 'nvidia', label: 'GB300·AI memory 적용 공개', source: 'https://news.skhynix.com/en/gtc-2026-exhibition-booth/' },
-  { from: 'micron', to: 'nvidia', label: 'H200에 HBM3E 적용', source: 'https://www.micron.com/about/blog/applications/ai/microns-hbm3e-powering-the-future-of-ai-with-high-bandwidth-memory' },
-  { from: 'amkor', to: 'nvidia', label: '첨단패키징·테스트 전략협력', source: 'https://ir.amkor.com/news-releases/news-release-details/amkor-technology-announces-strategic-partnership-nvidia-expand' },
-] as const
+export const VERIFIED_RELATIONS: IndustryRelation[] = [
+  {
+    from: 'asml', to: 'zeiss', kind: 'ownership', strength: 5,
+    label: '노광 광학 단일 공급 생태계',
+    evidence: 'ASML은 ZEISS SMT를 광학 칼럼 단일 공급처이자 ASML을 ZEISS의 단일 고객으로 공시했다.',
+    disclosedScale: 'ZEISS SMT 지분 24.9%', asOf: '2024-12-31',
+    source: 'https://ourbrand.asml.com/m/1d935e9653a216d7/original/2024-Annual-Report-based-on-IFRS.pdf',
+  },
+  {
+    from: 'samsung', to: 'samsung-display', kind: 'ownership', strength: 5,
+    label: '삼성전자 연결 자회사',
+    evidence: '삼성전자 연결재무제표가 Samsung Display의 의결권 지분을 84.8%로 공시했다.',
+    disclosedScale: '의결권 지분 84.8%', asOf: '2024-12-31',
+    source: 'https://images.samsung.com/is/content/samsung/assets/global/ir/docs/2025_SEC_Consolidated_Financial_statements.pdf',
+  },
+  {
+    from: 'samsung', to: 'broadcom', kind: 'collaboration', strength: 5,
+    label: '메모리·파운드리·패키징 전략협력',
+    evidence: '양사는 차세대 AI 인프라용 메모리·2nm 이하 파운드리·첨단패키징 협력을 공식 발표했다.',
+    disclosedScale: '2030년까지 5년간 $200B+', asOf: '2026-07-25',
+    source: 'https://news.samsung.com/kr/%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90%C2%B7%EB%B8%8C%EB%A1%9C%EB%93%9C%EC%BB%B4-2000%EC%96%B5-%EB%8B%AC%EB%9F%AC-%EA%B7%9C%EB%AA%A8-%EC%A0%84%EB%9E%B5%EC%A0%81-%ED%98%91%EB%A0%A5',
+  },
+  {
+    from: 'tsmc', to: 'broadcom', kind: 'manufacturing', strength: 5,
+    label: '핵심 위탁생산 관계',
+    evidence: 'Broadcom은 FY2025 위탁생산 웨이퍼의 약 95%가 TSMC에서 생산됐다고 공시했다.',
+    disclosedScale: '위탁생산 웨이퍼 약 95%', asOf: '2025-11-02',
+    source: 'https://www.sec.gov/Archives/edgar/data/1730168/000119312526085733/d46845dars.pdf',
+  },
+  {
+    from: 'amkor', to: 'nvidia', kind: 'manufacturing', strength: 5,
+    label: 'AI 첨단패키징·테스트 다년 계약',
+    evidence: 'NVIDIA의 선급금으로 Amkor 미국 첨단패키징 생산능력을 확대하는 다년 개발·생산 계약이다.',
+    disclosedScale: '$1.5B 다년 계약', asOf: '2026-07-23',
+    source: 'https://ir.amkor.com/news-releases/news-release-details/amkor-technology-announces-strategic-partnership-nvidia-expand',
+  },
+  {
+    from: 'sk-hynix', to: 'tsmc', kind: 'collaboration', strength: 4,
+    label: 'HBM4 base die·CoWoS 공동최적화',
+    evidence: 'HBM4 base die와 첨단패키징 호환성을 위한 전략적 공동개발을 양사가 공개했다.',
+    asOf: '2024-04-19',
+    source: 'https://news.skhynix.com/sk-hynix-partners-with-tsmc-to-strengthen-hbm-technological-leadership/',
+  },
+  {
+    from: 'tsmc', to: 'nvidia', kind: 'manufacturing', strength: 4,
+    label: 'AI GPU wafer·CoWoS 생산',
+    evidence: 'NVIDIA는 TSMC를 wafer foundry로 명시하고 CoWoS 패키징 기술을 사용한다고 공시했다.',
+    asOf: '2026-01-25',
+    source: 'https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm',
+  },
+  {
+    from: 'tsmc', to: 'amd', kind: 'manufacturing', strength: 4,
+    label: 'HPC·FPGA wafer 생산',
+    evidence: 'AMD는 HPC·FPGA·adaptive SoC 제품의 wafer 생산에 TSMC를 사용한다고 공시했다.',
+    asOf: '2025-12-27',
+    source: 'https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm',
+  },
+  {
+    from: 'sk-hynix', to: 'nvidia', kind: 'supply', strength: 4,
+    label: 'AI용 HBM 공급·시스템 적용',
+    evidence: 'NVIDIA는 SK hynix를 메모리 구매처로 공시했고 SK hynix는 GB300 적용 제품을 공개했다.',
+    asOf: '2026-01-25',
+    source: 'https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm',
+  },
+  {
+    from: 'micron', to: 'nvidia', kind: 'supply', strength: 4,
+    label: 'AI용 HBM 공급·H200 적용',
+    evidence: 'NVIDIA는 Micron을 메모리 구매처로 공시했고 Micron은 HBM3E의 H200 적용을 공개했다.',
+    asOf: '2026-01-25',
+    source: 'https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm',
+  },
+  {
+    from: 'samsung-display', to: 'universal-display', kind: 'supply', strength: 4,
+    label: 'PHOLED 재료·기술 장기계약',
+    evidence: 'OLED 재료 공급과 기술 라이선스 계약이 2027년 말까지 유효하며 2년 연장 옵션이 있다.',
+    disclosedScale: '2027년 말까지·2년 연장 옵션', asOf: '2022-12-05',
+    source: 'https://ir.oled.com/newsroom/press-releases/press-release-details/2022/Samsung-Display-and-Universal-Display-Corporation-Enter-into-Long-Term-OLED-Agreements/',
+  },
+  {
+    from: 'lg-display', to: 'universal-display', kind: 'supply', strength: 4,
+    label: 'PHOLED 재료·기술 장기계약 연장',
+    evidence: '20년 이상 이어진 OLED 재료 공급·기술 라이선스 계약을 2026년에 장기 연장했다.',
+    disclosedScale: '20년+ 협력·계약기간 비공개', asOf: '2026-02-26',
+    source: 'https://ir.oled.com/newsroom/press-releases/press-release-details/2026/LG-Display-and-Universal-Display-Corporation-Strengthen-Two-Decade-OLED-Partnership-with-Extended-Long-Term-Agreements/default.aspx',
+  },
+  {
+    from: 'samsung', to: 'nvidia', kind: 'supply', strength: 3,
+    label: 'wafer foundry·memory 공급처',
+    evidence: 'NVIDIA는 Samsung을 wafer foundry와 메모리 구매처로 모두 명시했으나 품목별 비중은 공개하지 않았다.',
+    asOf: '2026-01-25',
+    source: 'https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm',
+  },
+  {
+    from: 'synopsys', to: 'tsmc', kind: 'certification', strength: 3,
+    label: 'A16·N2P 인증 EDA/IP 협력',
+    evidence: 'A16·N2P 디지털·아날로그 flow 인증과 A14·3Dblox·CoWoS 공동개발이 공개됐다.',
+    asOf: '2025-04-23',
+    source: 'https://investor.synopsys.com/news/news-details/2025/Synopsys-and-TSMC-Usher-In-Angstrom-Scale-Designs-with-Certified-EDA-Flows-on-Advanced-TSMC-A16-and-N2P-Processes/default.aspx',
+  },
+  {
+    from: 'cadence', to: 'tsmc', kind: 'certification', strength: 3,
+    label: 'A16·N2P·3DFabric 인증 설계협력',
+    evidence: 'TSMC A16·N2P 인증 flow와 3DFabric 설계·IP 협력이 공식 발표됐다.',
+    asOf: '2025-04-24',
+    source: 'https://www.cadence.com/en_US/home/company/newsroom/press-releases/pr/2025/cadence-and-tsmc-advance-ai-and-3d-ic-chip-design-with-certified.html',
+  },
+]
 
 const githubReport = (filename: string) => `https://github.com/waterfirst/semiconductor-ai-hackathon-bootcamp/blob/main/startup-application/company-ecosystem/${filename}`
 

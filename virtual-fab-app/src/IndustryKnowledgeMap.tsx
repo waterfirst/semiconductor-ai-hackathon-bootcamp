@@ -6,6 +6,8 @@ import {
   DOMAIN_COLORS,
   DOMAIN_LABELS,
   INDUSTRY_COMPANIES,
+  RELATION_COLORS,
+  RELATION_KIND_LABELS,
   VERIFIED_RELATIONS,
   getCompanyDomain,
   type CompanyCategory,
@@ -14,6 +16,10 @@ import {
 } from './data/industryCompanies'
 
 type PositionedCompany = IndustryCompany & { position: [number, number, number]; domain: IndustryDomain; core: boolean }
+
+function relationLineWidth(strength: number, highlighted: boolean) {
+  return highlighted ? 1.15 + strength * .78 : .45 + strength * .42
+}
 
 const GALAXY_CENTERS = {
   semiconductor: [-5.7, .2, 0] as [number, number, number],
@@ -140,7 +146,19 @@ function KnowledgeGraph({ companies, selectedId, onSelect }: { companies: Positi
       const from = companyById.get(relation.from); const to = companyById.get(relation.to)
       if (!from || !to) return null
       const active = visibleIds.has(from.id) && visibleIds.has(to.id)
-      return <Line key={`${relation.from}-${relation.to}`} points={[from.position, to.position]} color="#ff4f8b" lineWidth={active ? 2.1 : .5} transparent opacity={active ? .85 : .07}/>
+      const highlighted = selectedId === from.id || selectedId === to.id
+      const nonCommercial = relation.kind === 'collaboration' || relation.kind === 'certification'
+      return <Line
+        key={`${relation.from}-${relation.to}`}
+        points={[from.position, to.position]}
+        color={RELATION_COLORS[relation.kind]}
+        lineWidth={active ? relationLineWidth(relation.strength, highlighted) : .42}
+        dashed={nonCommercial}
+        dashSize={nonCommercial ? .22 : undefined}
+        gapSize={nonCommercial ? .13 : undefined}
+        transparent
+        opacity={active ? highlighted ? .96 : .25 + relation.strength * .055 : .05}
+      />
     })}
     {selected && <pointLight position={selected.position} color={DOMAIN_COLORS[selected.domain]} intensity={6} distance={5}/>}
     <ContactShadows position={[0, .02, 0]} opacity={.22} scale={28} blur={3} far={12}/>
@@ -159,13 +177,25 @@ function CompanyReport({ company }: { company: IndustryCompany }) {
     <header><div><span style={{ '--company-color': DOMAIN_COLORS[domain] } as CSSProperties}>{DOMAIN_LABELS[domain]} · {CATEGORY_LABELS[company.category]} · {company.country}</span><h2>{company.name}</h2><p>{company.role}</p></div><b className={company.status}>{company.status === 'deep' ? '심층분석 완료' : '요약 프로필'}</b></header>
     <p className="industry-report-summary">{company.summary}</p>
     {domain === 'shared' && <section className="industry-cross-note"><b>두 은하의 공통 노드</b><p>반도체와 디스플레이가 함께 쓰는 진공·박막·세정·패터닝 역량을 뜻해. 특정 고객 계약을 의미하지는 않아.</p></section>}
-    {verifiedRelations.length > 0 && <section className="industry-report-relations" aria-label="공식 공개 관계"><h3>공식 발표로 확인된 연결</h3>{verifiedRelations.map((relation) => { const counterpartId = relation.from === company.id ? relation.to : relation.from; const counterpart = INDUSTRY_COMPANIES.find((item) => item.id === counterpartId); return <a key={`${relation.from}-${relation.to}`} href={relation.source} target="_blank" rel="noreferrer"><b>{counterpart?.name ?? counterpartId}</b><span>{relation.label}</span><i>원문 ↗</i></a> })}</section>}
+    {verifiedRelations.length > 0 && <section className="industry-report-relations" aria-label="공식 공개 관계">
+      <h3>공식 자료로 확인된 관계</h3>
+      <p>선 굵기는 공개 근거의 관계 강도 1–5등급이야. 실제 거래금액 비중은 공개된 경우에만 표시해.</p>
+      {verifiedRelations.map((relation) => {
+        const counterpartId = relation.from === company.id ? relation.to : relation.from
+        const counterpart = INDUSTRY_COMPANIES.find((item) => item.id === counterpartId)
+        return <a key={`${relation.from}-${relation.to}`} href={relation.source} target="_blank" rel="noreferrer">
+          <b>{counterpart?.name ?? counterpartId}</b>
+          <span>{relation.label}<small>{RELATION_KIND_LABELS[relation.kind]} · 공개 관계 강도 {relation.strength}/5 · {relation.asOf}{relation.disclosedScale ? ` · ${relation.disclosedScale}` : ''}</small></span>
+          <i>근거 ↗</i>
+        </a>
+      })}
+    </section>}
     {company.metrics && <section className="industry-report-metrics" aria-label="주요 공식 수치">{company.metrics.map((metric) => <div key={metric.label}><span>{metric.label}</span><b>{metric.value}</b><small>{metric.note}</small></div>)}</section>}
     <section className="industry-report-facts"><div><h3>핵심 제품</h3><ul>{company.products.map((item) => <li key={item}>{item}</li>)}</ul></div><div><h3>관련 공정</h3><ul>{company.processes.map((item) => <li key={item}>{item}</li>)}</ul></div><div><h3>관련 직무</h3><ul>{company.jobs.map((item) => <li key={item}>{item}</li>)}</ul></div><div><h3>검증할 위험</h3><ul>{company.risks.map((item) => <li key={item}>{item}</li>)}</ul></div></section>
     {company.sections ? <div className="industry-report-sections">{company.sections.map((section) => <section key={section.title}><h3>{section.title}</h3><p>{section.body}</p></section>)}</div> : <section className="industry-report-queued"><h3>심층분석 예정</h3><p>현재는 공식 홈페이지로 역할만 확인한 후보 프로필이야. 공시·연차보고서·제품자료를 검증한 뒤 기술·고객가치·경쟁·실적·직무를 채운다.</p></section>}
     <section className="industry-report-sources"><h3>공식 원문</h3>{company.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.label}<span aria-hidden="true">↗</span></a>)}</section>
     {company.reportUrl && <a className="industry-full-report" href={company.reportUrl} target="_blank" rel="noreferrer">GitHub 전체 심층보고서 열기<span aria-hidden="true">↗</span></a>}
-    <p className="industry-report-limit">은하의 일반 연결선은 교육용 공정 분류야. 실제 고객·공급 계약은 공식 발표가 있을 때만 분홍 실선으로 표시해.</p>
+    <p className="industry-report-limit">은하 중심으로 향하는 가는 방사선은 교육용 공정 분류야. 기업 사이 색상선만 공식 자료로 확인한 관계이며, 굵기는 거래액 자체가 아니라 공개 근거 기반의 관계 강도 등급이야.</p>
   </article>
 }
 
@@ -189,9 +219,9 @@ export function IndustryKnowledgeMap({ onBack }: { onBack: () => void }) {
     <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>VIRTUAL FAB</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
-        <div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>금색은 공통 기술 · 분홍 실선만 공식 발표 관계</small></div>
+        <div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>회전 · 확대 · 노드 클릭</b><small>연결선 굵기 = 공개 관계 강도 · 점선 = 공동개발·인증</small></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
-        <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공식 공개 관계</span></div>
+        <div className="industry-map-legend" aria-label="산업 은하 색상">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}<span className="verified"><i/>공개 관계 · 굵기 1–5</span></div>
         <MapErrorBoundary fallback={<FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}>
           {webgl ? <Canvas camera={{ position: [0, 32, 11], fov: 48 }} dpr={[1, 1.25]} frameloop="demand"><KnowledgeGraph companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/></Canvas> : <FallbackCompanyList companies={filtered} selectedId={selectedId} onSelect={setSelectedId}/>}
         </MapErrorBoundary>

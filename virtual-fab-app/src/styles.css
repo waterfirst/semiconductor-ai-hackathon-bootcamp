@@ -182,9 +182,10 @@ footer p { margin: 0; }.loading { min-height: 100vh; display: grid; place-conten
 .industry-report-summary { margin:22px 0; color:#25474e; font-size:.88rem; line-height:1.72; }
 .industry-cross-note { margin:0 0 22px; padding:14px; border:1px solid #e1a61c; background:#fff4d6; }.industry-cross-note b { color:#704d00; font-size:.72rem; }.industry-cross-note p { margin:5px 0 0; color:#715f33; font-size:.68rem; line-height:1.55; }
 .industry-report-relations { display:grid; gap:1px; margin:0 0 22px; padding:12px; background:#f9e7ed; border:1px solid #e0a9ba; }
-.industry-report-relations h3 { margin:0 0 7px; color:#842744; }
-.industry-report-relations a { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:9px; padding:8px 9px; color:#28494f; background:#fff; text-decoration:none; }
-.industry-report-relations a b { font-size:.65rem; }.industry-report-relations a span { font-size:.62rem; }.industry-report-relations a i { color:#a32e53; font-size:.56rem; font-style:normal; }
+.industry-report-relations h3 { margin:0 0 5px; color:#842744; }
+.industry-report-relations > p { margin:0 0 9px; color:#765361; font-size:.62rem; line-height:1.5; }
+.industry-report-relations a { display:grid; grid-template-columns:minmax(78px,auto) 1fr auto; align-items:center; gap:9px; padding:9px; color:#28494f; background:#fff; text-decoration:none; }
+.industry-report-relations a b { font-size:.65rem; }.industry-report-relations a span { display:grid; gap:3px; font-size:.62rem; }.industry-report-relations a small { color:#6c7e81; font-size:.52rem; line-height:1.35; }.industry-report-relations a i { color:#a32e53; font-size:.56rem; font-style:normal; }
 .industry-report-metrics { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid #9db2b5; border-left:1px solid #9db2b5; }
 .industry-report-metrics div { min-width:0; padding:12px; border-right:1px solid #9db2b5; border-bottom:1px solid #9db2b5; }
 .industry-report-metrics span,.industry-report-metrics small { display:block; color:#5a757a; font-size:.55rem; }
