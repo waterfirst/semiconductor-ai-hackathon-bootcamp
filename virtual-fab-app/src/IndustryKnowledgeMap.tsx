@@ -56,7 +56,9 @@ function orbitSignature(company: IndustryCompany) {
 function layerMotionOffset(company: PositionedCompany, elapsed: number): [number, number, number] {
   const signature = orbitSignature(company)
   const direction = signature % 2 === 0 ? 1 : -1
-  const speed = .16 + (signature % 5) * .025
+  // 한 바퀴에 약 60~97초가 걸리는 느린 공전. 지식맵을 읽는 동안
+  // 노드가 시야에서 급하게 벗어나지 않도록 기존 속도의 약 40%로 낮춘다.
+  const speed = .065 + (signature % 5) * .01
   const phase = (signature % 17) * .37
   return [Math.sin(elapsed * speed * direction + phase) * .3, Math.cos(elapsed * speed + phase) * .06, 0]
 }
@@ -377,7 +379,7 @@ export function IndustryKnowledgeMap({ onBack, backLabel = 'SCHOLARBRIDGE' }: { 
     <header className="industry-map-topbar"><div><button type="button" onClick={onBack}>{backLabel}</button><div><h1>반도체 × 디스플레이 산업 은하</h1><p>Memory·AI와 OLED·LCD 생태계가 공통 장비·소재에서 만나는 3D 지식맵.</p></div></div><div className="industry-map-toolbar"><nav className="industry-map-view-switch" aria-label="산업 지식맵 보기 방식"><button type="button" aria-pressed={viewMode === 'galaxy'} onClick={() => setViewMode('galaxy')}>3D 은하</button><button type="button" aria-pressed={viewMode === 'companies'} onClick={() => setViewMode('companies')}>회사 목록</button><button type="button" aria-pressed={viewMode === 'process'} onClick={() => setViewMode('process')}>공정 장비표</button></nav><div className="industry-map-controls"><label><span>기업·공정 검색</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="OLED, HBM, 증착, ULVAC…"/></label><label><span>산업 은하</span><select aria-label="산업 은하" value={domain} onChange={(event) => setDomain(event.target.value as 'all' | IndustryDomain)}><option value="all">두 은하 전체</option>{Object.entries(DOMAIN_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>본사 지역</span><select aria-label="본사 지역" value={region} onChange={(event) => setRegion(event.target.value as RegionFilter)}>{Object.entries(REGION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div></div></header>
     <section className="industry-map-workspace">
       <section className="industry-map-visual" aria-label="반도체와 디스플레이 산업 3D 지식맵">
-        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>Z축 4단 공급망 · 대형회사명 표시</b><small>작은 행성 클릭 → 회사명·보고서 · 레이어 이동 {motionEnabled ? 'ON' : 'PAUSED'}</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
+        {viewMode === 'galaxy' && <><div className="industry-map-status"><span>DUAL GALAXY · {filtered.length} / {positioned.length} COMPANIES</span><b>Z축 4단 공급망 · 대형회사명 표시</b><small>작은 행성 클릭 → 회사명·보고서 · 천천히 공전 {motionEnabled ? 'ON' : 'PAUSED'}</small><button type="button" aria-pressed={orbiting} onClick={() => setOrbiting((current) => !current)}>{orbiting ? '공전 일시정지' : '공전 시작'}</button></div>
         <div className="industry-galaxy-guide" aria-label="두 산업 은하 안내"><div className="semiconductor"><b>반도체 은하</b><span>Memory · Logic · AI</span></div><div className="shared"><b>공통 기술 브리지</b><span>Vacuum · Film · Clean</span></div><div className="display"><b>디스플레이 은하</b><span>OLED · LCD · MLED</span></div></div>
         <div className="industry-map-legend" aria-label="산업·업종·매출 범례">
           <div className="industry-legend-domains">{Object.entries(DOMAIN_LABELS).map(([key, label]) => <span key={key}><i className="domain-ring" style={{ '--legend-color': DOMAIN_COLORS[key as IndustryDomain] } as CSSProperties}/>{label}</span>)}</div>
