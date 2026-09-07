@@ -1,4 +1,4 @@
-import { ContactShadows, Html } from '@react-three/drei'
+import { ContactShadows, Environment, Html, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MathUtils, Vector3 } from 'three'
@@ -6,7 +6,7 @@ import type { Group, Mesh } from 'three'
 import type { ScenarioSummary } from './types'
 
 const ENTRY_STEPS = [
-  { code: 'ACCESS', title: '환영합니다', copy: 'SK하이닉스 반도체 팹에 오셨습니다. 이곳은 취업 준비를 위한 교육용 가상 환경입니다. 평균값 뒤에 숨은 이상 신호를 데이터로 추적하고, 제한된 시간과 예산 안에서 원인을 좁혀 보세요.', action: '출입 등록 시작' },
+  { code: 'ACCESS', title: '환영합니다', copy: '가상 반도체 팹 FACILITY 01에 오셨습니다. 이곳은 취업 준비를 위한 교육용 가상 환경입니다. 평균값 뒤에 숨은 이상 신호를 데이터로 추적하고, 제한된 시간과 예산 안에서 원인을 좁혀 보세요.', action: '출입 등록 시작' },
   { code: 'WASH', title: '손 씻기', copy: '손과 손목의 오염원을 제거한다. 실제 클린룸 절차를 단순화한 교육 장면이며, 이 게임의 본체는 입실 뒤 시작되는 불량 원인 진단이다.', action: '세정 완료' },
   { code: 'MASK', title: '마스크 착용', copy: '비말과 호흡 입자의 유입을 줄인다. 마스크가 얼굴을 완전히 덮었는지 확인한 뒤 다음 준비실로 이동한다.', action: '마스크 착용' },
   { code: 'GOWN', title: '방진복 착용', copy: '머리카락과 의복에서 발생하는 입자를 격리한다. 장갑·후드·방진복이 준비되면 오염 구역과 청정 구역의 경계를 통과할 수 있다.', action: '방진복 착용' },
@@ -20,22 +20,56 @@ const ENTRY_POSITIONS: Array<[number, number, number]> = [
 const ACTION_DURATIONS = [650, 1850, 1550, 1950, 2250] as const
 const ACTION_LABELS = ['출입 확인 중…', '손과 손목을 세정 중…', '마스크를 착용 중…', '방진복과 장갑을 착용 중…', '에어샤워 가동 중…'] as const
 
+// 준비실을 지날 때 카메라가 따라 걷도록 단계별 위치를 준다. 이전에는 위치가
+// (6.8, 4.2, 8.5) 로 고정이고 시선만 돌아서, 손씻기에서 에어샤워까지 이동해도
+// 화면이 제자리에서 고개만 돌리는 느낌이었다.
+const CAMERA_STATIONS: Array<[number, number, number]> = [
+  [-2.6, 3.55, 7.5], [-.75, 3.45, 7.3], [1.1, 3.35, 7.0], [3.0, 3.2, 6.7], [5.1, 2.95, 5.6],
+]
+
+// 진입 연출: 에어샤워 문이 열리면 눈높이로 낮추고 앞으로 밀어 넣는다.
+const CINEMATIC_POSITION = new Vector3(4.55, 1.95, 1.35)
+const CINEMATIC_LOOK = new Vector3(3.55, 1.12, -2.6)
+const HALL_POSITION = new Vector3(0, 5.3, 10.8)
+const HALL_LOOK = new Vector3(0, 1.1, -2.2)
+
+// 지수감쇠(lerp)는 항상 감속만 해서 흐물거린다. 가속 뒤 감속하는 곡선으로 바꾼다.
+const easeInOutCubic = (t: number) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
 function CameraRig({ step, hall, cinematic, reducedMotion }: { step: number; hall: boolean; cinematic: boolean; reducedMotion: boolean }) {
   const { camera } = useThree()
-  const targetPosition = useMemo(() => hall ? new Vector3(0, 5.3, 10.8) : cinematic ? new Vector3(6.15, 2.65, 3.7) : new Vector3(6.8, 4.2, 8.5), [cinematic, hall])
-  const targetLook = useMemo(() => hall ? new Vector3(0, 1.1, -2.2) : cinematic ? new Vector3(3.55, 1.12, -.7) : new Vector3(ENTRY_POSITIONS[step][0], 1, ENTRY_POSITIONS[step][2]), [cinematic, hall, step])
+  const stationIndex = Math.min(step, CAMERA_STATIONS.length - 1)
+  const targetPosition = useMemo(() => hall ? HALL_POSITION.clone() : cinematic ? CINEMATIC_POSITION.clone() : new Vector3(...CAMERA_STATIONS[stationIndex]), [cinematic, hall, stationIndex])
+  const targetLook = useMemo(() => hall ? HALL_LOOK.clone() : cinematic ? CINEMATIC_LOOK.clone() : new Vector3(ENTRY_POSITIONS[step][0], 1, ENTRY_POSITIONS[step][2]), [cinematic, hall, step])
+
+  // 구간 시작점을 기억해 두고 0→1 진행도로 보간한다. 목표가 바뀔 때마다 재시작한다.
+  const fromPosition = useRef(new Vector3())
+  const fromLook = useRef(new Vector3())
+  const currentLook = useRef(new Vector3())
+  const progress = useRef(1)
+  const duration = hall ? 1.6 : cinematic ? 2.4 : 1.05
 
   useEffect(() => {
-    if (!reducedMotion) return
-    camera.position.copy(targetPosition)
-    camera.lookAt(targetLook)
-    camera.updateProjectionMatrix()
+    if (reducedMotion) {
+      camera.position.copy(targetPosition)
+      currentLook.current.copy(targetLook)
+      camera.lookAt(targetLook)
+      camera.updateProjectionMatrix()
+      return
+    }
+    fromPosition.current.copy(camera.position)
+    fromLook.current.copy(currentLook.current.lengthSq() ? currentLook.current : targetLook)
+    progress.current = 0
   }, [camera, reducedMotion, targetLook, targetPosition])
 
   useFrame((_, delta) => {
     if (reducedMotion) return
-    camera.position.lerp(targetPosition, 1 - Math.exp(-delta * (cinematic ? .72 : 2.8)))
-    camera.lookAt(targetLook)
+    progress.current = Math.min(1, progress.current + delta / duration)
+    const eased = easeInOutCubic(progress.current)
+    camera.position.lerpVectors(fromPosition.current, targetPosition, eased)
+    // 시선도 같이 보간한다. 이전에는 목표가 바뀌는 순간 lookAt 이 튀었다.
+    currentLook.current.lerpVectors(fromLook.current, targetLook, eased)
+    camera.lookAt(currentLook.current)
   })
   return null
 }
@@ -230,38 +264,50 @@ function Rookie({ step, acting, cinematic, reducedMotion }: { step: number; acti
   const cloth = gowned ? '#f4fbfb' : '#26a8b2'
   const glove = gowned ? '#d9ffff' : '#e6b991'
 
+  // 사람 비율로 재구성(2026-09-07). 이전에는 머리 지름이 전체 키의 1/3.2 라
+  // 인형처럼 보였다. 실제 성인은 약 1/7.5 이고, 게임 캐릭터는 1/5.5 정도가
+  // 친근하면서도 사람으로 읽힌다. 키(약 2.46)는 그대로 두고 머리를 줄여
+  // 남는 높이를 다리·몸통에 돌려주었다. 리그(ref)와 애니메이션은 그대로다.
   return <group ref={root} position={ENTRY_POSITIONS[0]} rotation={[0,Math.PI,0]} scale={.76}>
     <group ref={body}>
-      <group ref={leftLeg} position={[-.2,.72,0]}>
-        <mesh position={[0,-.35,0]}><capsuleGeometry args={[.13,.45,6,10]}/><meshStandardMaterial color="#213f48"/></mesh>
-        <mesh position={[0,-.72,.09]} scale={[1,.55,1.55]}><sphereGeometry args={[.16,12,8]}/><meshStandardMaterial color="#18333b"/></mesh>
+      <group ref={leftLeg} position={[-.13,1.10,0]}>
+        <mesh position={[0,-.50,0]}><capsuleGeometry args={[.115,.70,6,10]}/><meshStandardMaterial color="#213f48"/></mesh>
+        <mesh position={[0,-1.04,.10]} scale={[1,.5,1.7]}><sphereGeometry args={[.13,12,8]}/><meshStandardMaterial color="#18333b"/></mesh>
       </group>
-      <group ref={rightLeg} position={[.2,.72,0]}>
-        <mesh position={[0,-.35,0]}><capsuleGeometry args={[.13,.45,6,10]}/><meshStandardMaterial color="#213f48"/></mesh>
-        <mesh position={[0,-.72,.09]} scale={[1,.55,1.55]}><sphereGeometry args={[.16,12,8]}/><meshStandardMaterial color="#18333b"/></mesh>
+      <group ref={rightLeg} position={[.13,1.10,0]}>
+        <mesh position={[0,-.50,0]}><capsuleGeometry args={[.115,.70,6,10]}/><meshStandardMaterial color="#213f48"/></mesh>
+        <mesh position={[0,-1.04,.10]} scale={[1,.5,1.7]}><sphereGeometry args={[.13,12,8]}/><meshStandardMaterial color="#18333b"/></mesh>
       </group>
-      <mesh position={[0,.82,0]}><capsuleGeometry args={[.25,.28,6,12]}/><meshStandardMaterial color={gowned ? '#e6f5f4' : '#213f48'}/></mesh>
-      <mesh position={[0,1.33,0]} scale={[1,.95,.7]}><capsuleGeometry args={[.43,.48,7,14]}/><meshStandardMaterial color={cloth}/></mesh>
-      {gowned && <mesh position={[0,1.23,-.02]} scale={[1.06,1.18,.78]}><capsuleGeometry args={[.44,.46,7,14]}/><meshStandardMaterial color="#f4fbfb" transparent opacity={.94}/></mesh>}
+      {/* 골반 → 허리 → 가슴 순으로 굵기를 달리해 허리 잘록함을 만든다. 이전에는
+          반지름 .43 짜리 캡슐 하나라 통짜 원통으로 보였다. */}
+      <mesh position={[0,1.18,0]} scale={[1,1,.78]}><capsuleGeometry args={[.20,.20,6,12]}/><meshStandardMaterial color={gowned ? '#e6f5f4' : '#213f48'}/></mesh>
+      <mesh position={[0,1.44,0]} scale={[1,1,.74]}><capsuleGeometry args={[.185,.20,6,12]}/><meshStandardMaterial color={cloth}/></mesh>
+      <mesh position={[0,1.70,0]} scale={[1.18,.92,.72]}><capsuleGeometry args={[.27,.30,7,14]}/><meshStandardMaterial color={cloth}/></mesh>
+      {gowned && <mesh position={[0,1.60,-.02]} scale={[1.24,1.30,.80]}><capsuleGeometry args={[.28,.34,7,14]}/><meshStandardMaterial color="#f4fbfb" transparent opacity={.94}/></mesh>}
 
-      <group ref={leftArm} position={[-.48,1.56,0]}>
-        <mesh position={[0,-.29,0]}><capsuleGeometry args={[.11,.36,6,10]}/><meshStandardMaterial color={cloth}/></mesh>
-        <group ref={leftForearm} position={[0,-.57,0]}><mesh position={[0,-.25,0]}><capsuleGeometry args={[.1,.3,6,10]}/><meshStandardMaterial color={cloth}/></mesh><mesh ref={leftHand} position={[0,-.5,0]} scale={[.8,1.1,.65]}><sphereGeometry args={[.14,12,8]}/><meshStandardMaterial color={glove}/></mesh></group>
+      <group ref={leftArm} position={[-.30,1.80,0]}>
+        <mesh scale={[.9,1,.85]}><sphereGeometry args={[.105,12,10]}/><meshStandardMaterial color={cloth}/></mesh>
+        <mesh position={[0,-.28,0]}><capsuleGeometry args={[.08,.36,6,10]}/><meshStandardMaterial color={cloth}/></mesh>
+        <group ref={leftForearm} position={[0,-.54,0]}><mesh scale={[1,.95,.95]}><sphereGeometry args={[.076,12,10]}/><meshStandardMaterial color={cloth}/></mesh><mesh position={[0,-.24,0]}><capsuleGeometry args={[.068,.30,6,10]}/><meshStandardMaterial color={cloth}/></mesh><mesh ref={leftHand} position={[0,-.48,0]} scale={[.78,1.15,.6]}><sphereGeometry args={[.095,12,8]}/><meshStandardMaterial color={glove}/></mesh></group>
       </group>
-      <group ref={rightArm} position={[.48,1.56,0]}>
-        <mesh position={[0,-.29,0]}><capsuleGeometry args={[.11,.36,6,10]}/><meshStandardMaterial color={cloth}/></mesh>
-        <group ref={rightForearm} position={[0,-.57,0]}><mesh position={[0,-.25,0]}><capsuleGeometry args={[.1,.3,6,10]}/><meshStandardMaterial color={cloth}/></mesh><mesh ref={rightHand} position={[0,-.5,0]} scale={[.8,1.1,.65]}><sphereGeometry args={[.14,12,8]}/><meshStandardMaterial color={glove}/></mesh></group>
+      <group ref={rightArm} position={[.30,1.80,0]}>
+        <mesh scale={[.9,1,.85]}><sphereGeometry args={[.105,12,10]}/><meshStandardMaterial color={cloth}/></mesh>
+        <mesh position={[0,-.28,0]}><capsuleGeometry args={[.08,.36,6,10]}/><meshStandardMaterial color={cloth}/></mesh>
+        <group ref={rightForearm} position={[0,-.54,0]}><mesh scale={[1,.95,.95]}><sphereGeometry args={[.076,12,10]}/><meshStandardMaterial color={cloth}/></mesh><mesh position={[0,-.24,0]}><capsuleGeometry args={[.068,.30,6,10]}/><meshStandardMaterial color={cloth}/></mesh><mesh ref={rightHand} position={[0,-.48,0]} scale={[.78,1.15,.6]}><sphereGeometry args={[.095,12,8]}/><meshStandardMaterial color={glove}/></mesh></group>
       </group>
 
-      <mesh position={[0,1.77,0]}><cylinderGeometry args={[.12,.14,.18,12]}/><meshStandardMaterial color="#d59d73"/></mesh>
-      <group ref={head} position={[0,2.08,0]}>
-        {gowned && <mesh position={[0,0,-.06]} scale={[1.2,1.18,1.06]}><sphereGeometry args={[.43,18,14]}/><meshStandardMaterial color="#f7ffff"/></mesh>}
-        <mesh><sphereGeometry args={[.38,18,14]}/><meshStandardMaterial color="#e6b991"/></mesh>
-        {!gowned && <mesh position={[0,.2,-.03]} scale={[1.02,.55,1.02]}><sphereGeometry args={[.39,16,10]}/><meshStandardMaterial color="#263b43"/></mesh>}
-        <mesh position={[-.14,.05,.34]}><sphereGeometry args={[.035,8,6]}/><meshBasicMaterial color="#152b32"/></mesh>
-        <mesh position={[.14,.05,.34]}><sphereGeometry args={[.035,8,6]}/><meshBasicMaterial color="#152b32"/></mesh>
-        {gowned && <mesh position={[0,0,.345]}><torusGeometry args={[.34,.045,8,20]}/><meshStandardMaterial color="#cfe7e7"/></mesh>}
-        {masked && <mesh position={[0,-.08,.36]} scale={[1.1,.58,.18]}><sphereGeometry args={[.31,14,10]}/><meshStandardMaterial color="#a8eff1"/></mesh>}
+      <mesh position={[0,1.99,0]}><cylinderGeometry args={[.072,.095,.22,12]}/><meshStandardMaterial color="#d59d73"/></mesh>
+      <group ref={head} position={[0,2.26,0]}>
+        {gowned && <mesh position={[0,0,-.04]} scale={[1.18,1.16,1.08]}><sphereGeometry args={[.245,18,14]}/><meshStandardMaterial color="#f7ffff"/></mesh>}
+        {/* 두개골은 좌우보다 위아래가 길고 뒤통수가 나온다. 정구체는 아기 얼굴로 읽힌다. */}
+        <mesh scale={[1,1.14,1.02]}><sphereGeometry args={[.225,20,16]}/><meshStandardMaterial color="#e6b991"/></mesh>
+        <mesh position={[0,-.10,.055]} scale={[.86,.80,.92]}><sphereGeometry args={[.20,16,12]}/><meshStandardMaterial color="#e6b991"/></mesh>
+        {!gowned && <mesh position={[0,.10,-.025]} scale={[1.05,.72,1.06]}><sphereGeometry args={[.232,18,12]}/><meshStandardMaterial color="#263b43"/></mesh>}
+        <mesh position={[-.085,.015,.195]} scale={[1.35,1,.6]}><sphereGeometry args={[.024,10,8]}/><meshBasicMaterial color="#152b32"/></mesh>
+        <mesh position={[.085,.015,.195]} scale={[1.35,1,.6]}><sphereGeometry args={[.024,10,8]}/><meshBasicMaterial color="#152b32"/></mesh>
+        <mesh position={[0,-.045,.215]} scale={[.7,1.1,.9]}><sphereGeometry args={[.032,10,8]}/><meshStandardMaterial color="#dcae86"/></mesh>
+        {gowned && <mesh position={[0,-.01,.20]}><torusGeometry args={[.205,.03,8,20]}/><meshStandardMaterial color="#cfe7e7"/></mesh>}
+        {masked && <mesh position={[0,-.075,.20]} scale={[1.12,.62,.24]}><sphereGeometry args={[.19,14,10]}/><meshStandardMaterial color="#a8eff1"/></mesh>}
       </group>
     </group>
   </group>
@@ -279,9 +325,10 @@ function RoomDoor({ item, index, onSelect }: { item: ScenarioSummary; index: num
 }
 
 function LobbyScene({ step, acting, hall, cinematic, scenarios, onSelect, reducedMotion }: { step: number; acting: boolean; hall: boolean; cinematic: boolean; scenarios: ScenarioSummary[]; onSelect: (id: string) => void; reducedMotion: boolean }) {
-  return <Canvas camera={{position:[6.8,4.2,8.5],fov:42}} dpr={[1,1.5]} frameloop={reducedMotion ? 'demand' : 'always'}>
+  return <Canvas camera={{position:[6.8,4.2,8.5],fov:42}} dpr={[1,1.5]} gl={{antialias:true,toneMappingExposure:1.12}} frameloop={reducedMotion ? 'demand' : 'always'}>
     <color attach="background" args={[hall ? '#071c23' : '#dbe8e8']}/>
-    <ambientLight intensity={hall ? 1.1 : 2.1}/><directionalLight position={[5,9,6]} intensity={hall ? 2.2 : 3.2}/>
+    <ambientLight intensity={hall ? .55 : .95}/><directionalLight position={[5,9,6]} intensity={hall ? 2.8 : 3.9}/>
+    <Environment key={hall?'hall':'prep'} frames={1} resolution={128}><Lightformer intensity={hall?2.4:3.2} form="rect" scale={[14,5,1]} position={[0,6,-6]} color={hall?'#7fe9ff':'#ffffff'}/><Lightformer intensity={1.5} form="rect" scale={[10,4,1]} position={[-9,4,3]} rotation-y={Math.PI/2} color="#cfe9ff"/><Lightformer intensity={1.5} form="rect" scale={[10,4,1]} position={[9,4,3]} rotation-y={-Math.PI/2} color="#cfe9ff"/></Environment>
     <FacilityShell hall={hall}/><CameraRig step={step} hall={hall} cinematic={cinematic} reducedMotion={reducedMotion}/>
     {!hall && <><SinkStation active={step===1} running={step===1 && acting}/><MaskStation active={step===2}/><GownStation active={step===3}/>{cinematic&&<CleanroomThreshold/>}<AirShower active={step===4||cinematic} running={step===4 && acting} entryOpen={step===4&&!acting} exitOpen={cinematic}/><Rookie step={step} acting={acting} cinematic={cinematic} reducedMotion={reducedMotion}/></>}
     {hall && scenarios.map((item,index)=><RoomDoor key={item.id} item={item} index={index} onSelect={() => onSelect(item.id)}/>)}
