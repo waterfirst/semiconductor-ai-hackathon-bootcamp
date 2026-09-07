@@ -1,6 +1,6 @@
 import { ContactShadows, Html, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MathUtils, Vector3 } from 'three'
 import type { Group, Mesh } from 'three'
 import type { Scenario, SessionState } from './types'
@@ -90,6 +90,63 @@ function Station({
         <meshBasicMaterial color={active ? '#ffb21d' : complete ? '#5dd6b7' : '#9da9ab'} />
       </mesh>
     </group>
+  )
+}
+
+// 공정 설명 영상. 시나리오의 process(PHOTO, DRY ETCH ...) 를 파일명으로 바꾼다.
+// 영상에 제목·단계칩·자막이 이미 구워져 있어 별도 UI 가 필요 없다.
+const filmName = (process: string) => process.trim().toLowerCase().replace(/\s+/g, '_')
+
+function ProcessFilm({ process, onEnded }: { process: string; onEnded: () => void }) {
+  const video = useRef<HTMLVideoElement>(null)
+  const done = useRef(onEnded)
+  done.current = onEnded
+  const base = `${import.meta.env.BASE_URL}videos/process_${filmName(process)}`
+
+  useEffect(() => {
+    const el = video.current
+    if (!el) return
+    let finished = false
+    let raf = 0
+    const finish = () => {
+      if (finished) return
+      finished = true
+      el.pause()
+      window.clearTimeout(guard)
+      window.clearTimeout(watchdog)
+      if (raf) cancelAnimationFrame(raf)
+      done.current()
+    }
+    // 입실 영상에서 겪은 것과 같은 대비책이다. 재생이 막히는 환경에서는
+    // currentTime 을 직접 밀어 프레임을 넘긴다.
+    let last = 0
+    const scrub = (now: number) => {
+      if (!last) last = now
+      const dt = Math.min(0.25, (now - last) / 1000)
+      last = now
+      try { el.currentTime = Math.min(el.duration - 0.05, el.currentTime + dt) } catch { /* noop */ }
+      if (el.currentTime >= el.duration - 0.08) { finish(); return }
+      raf = requestAnimationFrame(scrub)
+    }
+    el.addEventListener('ended', finish)
+    void el.play().catch(() => { /* watchdog 이 넘긴다 */ })
+    const watchdog = window.setTimeout(() => {
+      if (el.paused || el.currentTime < 0.05) { el.pause(); raf = requestAnimationFrame(scrub) }
+    }, 700)
+    const guard = window.setTimeout(finish, 16000)
+    return () => {
+      el.removeEventListener('ended', finish)
+      window.clearTimeout(guard)
+      window.clearTimeout(watchdog)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [base])
+
+  return (
+    <div className="process-film" role="dialog" aria-label={`${process} 공정 설명 영상`}>
+      <video ref={video} src={`${base}.mp4`} poster={`${base}_cover.jpg`} muted playsInline preload="auto" />
+      <button type="button" className="process-film-close" onClick={() => done.current()}>건너뛰기 ✕</button>
+    </div>
   )
 }
 
@@ -189,10 +246,16 @@ function ValidationGate() {
   return <group><WaferDisc position={[-1.15,1.05,0]} color="#b9c6c8" defects/><WaferDisc position={[1.15,1.05,0]} color="#82d8c3"/><mesh position={[0,1.1,0]} rotation={[0,0,-Math.PI/2]}><coneGeometry args={[.22,.65,20]}/><meshStandardMaterial color="#ffb21d"/></mesh><Html position={[-1.15,2.45,0]} center distanceFactor={10}><span className="tool-tag muted">BASELINE</span></Html><Html position={[1.15,2.45,0]} center distanceFactor={10}><span className="tool-tag">HOLDOUT</span></Html></group>
 }
 
-function StageExhibit({ stageIndex }: { stageIndex: number }) {
+function StageExhibit({ stageIndex, onSelect }: { stageIndex: number; onSelect: () => void }) {
   const exhibit = useRef<Group>(null)
   useFrame(({ clock }) => { if (exhibit.current) exhibit.current.position.y = .15 + Math.sin(clock.elapsedTime * 1.4) * .045 })
-  return <group ref={exhibit} position={[0,.15,-.15]}>
+  return <group
+    ref={exhibit}
+    position={[0,.15,-.15]}
+    onClick={(event) => { event.stopPropagation(); onSelect() }}
+    onPointerOver={() => { document.body.style.cursor = 'pointer' }}
+    onPointerOut={() => { document.body.style.cursor = 'default' }}
+  >
     {stageIndex === 0 && <WaferDisc defects/>}
     {stageIndex === 1 && <><MentorConsole/><group position={[0,0,-1.8]} scale={.72}><WaferMap/></group></>}
     {stageIndex === 2 && <DoeMatrix/>}
@@ -205,6 +268,10 @@ export function FabScene({ scenario, session, onStationSelect }: { scenario: Sce
   const stageIndex = session.stage_index
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const pathPoints = useMemo(() => scenario.stages.map((stage) => STATION_LAYOUT[stage.station]), [scenario])
+  // 전시물을 누르면 공정 영상을 덮어 재생하고, 끝나면 다시 3D 로 돌아온다.
+  const [filmOpen, setFilmOpen] = useState(false)
+  // 공정이 바뀌면 남아 있던 영상을 닫는다.
+  useEffect(() => { setFilmOpen(false) }, [scenario.id])
   return (
     <div className="scene-wrap" aria-label="가상 팹 공정 스테이션">
       <Canvas camera={{ position: [13.5, 11.5, 16.5], fov: 42 }} dpr={[1, 1.65]} frameloop={reducedMotion ? 'demand' : 'always'}>
@@ -212,7 +279,7 @@ export function FabScene({ scenario, session, onStationSelect }: { scenario: Sce
         <ambientLight intensity={1.15} />
         <directionalLight position={[5, 10, 6]} intensity={2.2} castShadow />
         <FabFloor />
-        <StageExhibit key={stageIndex} stageIndex={stageIndex} />
+        <StageExhibit key={stageIndex} stageIndex={stageIndex} onSelect={() => setFilmOpen(true)} />
         <FabOperator target={pathPoints[stageIndex]} stageIndex={stageIndex}/>
         {pathPoints.map((point, index) => index < pathPoints.length - 1 && (
           <mesh key={`path-${index}`} position={[(point[0] + pathPoints[index + 1][0]) / 2, 0.015, (point[2] + pathPoints[index + 1][2]) / 2]} rotation={[-Math.PI / 2, 0, Math.atan2(pathPoints[index + 1][2] - point[2], pathPoints[index + 1][0] - point[0])] }>
@@ -234,9 +301,12 @@ export function FabScene({ scenario, session, onStationSelect }: { scenario: Sce
         <ContactShadows position={[0, 0.02, 0]} opacity={0.22} scale={22} blur={2.6} far={9} />
         <OrbitControls enablePan={false} minDistance={16} maxDistance={38} minPolarAngle={0.72} maxPolarAngle={1.2} target={[0, 1.2, 0]} />
       </Canvas>
-      <div className="exhibit-label"><span>ACTIVE MODEL · {scenario.process}</span><b>{EXHIBIT_LABELS[stageIndex]}</b></div>
+      <button type="button" className="exhibit-label exhibit-play" onClick={() => setFilmOpen(true)} aria-label={`${scenario.process} 공정 설명 영상 보기`}>
+        <span>ACTIVE MODEL · {scenario.process}</span><b>{EXHIBIT_LABELS[stageIndex]}</b><i>▶ 공정 영상</i>
+      </button>
+      {filmOpen && <ProcessFilm process={scenario.process} onEnded={() => setFilmOpen(false)} />}
       <div className="mission-hud"><span>MISSION {String(stageIndex + 1).padStart(2, '0')}</span><b>{scenario.stages[stageIndex].label}</b><small>{session.completed ? 'CLEAR' : 'IN PROGRESS'} · XP {session.score}/100</small><div><i style={{ transform: `scaleX(${session.score / 100})` }}/></div></div>
-      <div className="scene-help">드래그해 회전 · 휠로 확대 · 현재 스테이션 클릭</div>
+      <div className="scene-help">드래그해 회전 · 휠로 확대 · 가운데 모형을 누르면 공정 영상</div>
     </div>
   )
 }

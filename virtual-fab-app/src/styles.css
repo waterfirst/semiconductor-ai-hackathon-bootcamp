@@ -298,3 +298,13 @@ footer p { margin: 0; }.loading { min-height: 100vh; display: grid; place-conten
 
 /* 입실 절차 영상. 캔버스가 있던 자리를 그대로 채운다. */
 .lobby-film{width:100%;height:100%;display:block;object-fit:cover;background:#dbe8e8}
+
+/* 공정 설명 영상 — 3D 씬 위를 덮고, 끝나면 사라져 다시 3D 로 돌아온다.
+   영상에 자막이 구워져 있어 잘리면 안 되므로 contain 으로 전체를 보여준다. */
+.process-film { position:absolute; inset:0; z-index:6; display:grid; place-items:center; background:#03151a; }
+.process-film video { width:100%; height:100%; object-fit:contain; background:#03151a; }
+.process-film-close { position:absolute; top:12px; right:12px; padding:7px 12px; border:1px solid #4d7c85; border-radius:999px; color:#dff6f8; background:rgba(4,26,32,.72); font:700 .72rem/1 var(--narrow); letter-spacing:.04em; cursor:pointer; }
+.process-film-close:hover { background:rgba(10,50,60,.9); }
+.exhibit-play { z-index:5; border:0; text-align:left; cursor:pointer; font:inherit; pointer-events:auto; }
+.exhibit-play i { display:block; margin-top:6px; color:var(--amber); font:700 .62rem/1 var(--narrow); font-style:normal; letter-spacing:.1em; }
+.exhibit-play:hover i { text-decoration:underline; }
