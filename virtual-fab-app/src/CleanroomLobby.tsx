@@ -17,6 +17,64 @@ const ENTRY_POSITIONS: Array<[number, number, number]> = [
   [-5.6, 0, 1.5], [-3.4, 0, 1.52], [-1.2, 0, 1.38], [1.15, 0, 1.46], [3.55, 0, -.08], [3.55, 0, -2.25],
 ]
 
+// 입실 5단계는 Blender 로 렌더한 영상으로 보여준다. 코드로 만든 3D 로비는
+// 캡슐·박스 조합이라 손을 씻거나 방진복을 입는 동작을 표현할 수 없었다.
+// 구간 시각은 원본 스토리보드의 프레임값(12fps 기준 1/96/180/258/348)이다.
+const FILM_SRC = `${import.meta.env.BASE_URL}media/cleanroom_entry.mp4`
+const FILM_POSTER = `${import.meta.env.BASE_URL}media/cleanroom_entry_cover.jpg`
+const FILM_SEGMENTS: Array<[number, number]> = [
+  [0, 7.917], [7.917, 14.917], [14.917, 21.417], [21.417, 28.917], [28.917, 38],
+]
+
+function LobbyFilm({ step, acting, reducedMotion, onSegmentEnd }: { step: number; acting: boolean; reducedMotion: boolean; onSegmentEnd: () => void }) {
+  const video = useRef<HTMLVideoElement>(null)
+  const done = useRef(onSegmentEnd)
+  done.current = onSegmentEnd
+  const index = Math.min(step, FILM_SEGMENTS.length - 1)
+
+  // 단계가 바뀌면 그 구간 첫 프레임에 멈춰 선다.
+  useEffect(() => {
+    const el = video.current
+    if (!el) return
+    el.pause()
+    try { el.currentTime = FILM_SEGMENTS[index][0] } catch { /* metadata 미도착 */ }
+  }, [index])
+
+  useEffect(() => {
+    const el = video.current
+    if (!el || !acting || reducedMotion) return
+    const [start, end] = FILM_SEGMENTS[index]
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      el.pause()
+      el.removeEventListener('timeupdate', tick)
+      window.clearTimeout(guard)
+      done.current()
+    }
+    const tick = () => { if (el.currentTime >= end - 0.06) finish() }
+    try { el.currentTime = start } catch { /* noop */ }
+    el.addEventListener('timeupdate', tick)
+    // 자동재생 차단·디코딩 지연으로 timeupdate 가 오지 않아도 진행이 멈추지
+    // 않도록 상한을 둔다. 이것이 없으면 버튼이 영영 잠긴다.
+    const guard = window.setTimeout(finish, (end - start) * 1000 + 2600)
+    void el.play().catch(() => { /* 사용자 제스처 없이 막히면 guard 가 넘긴다 */ })
+    return () => { el.removeEventListener('timeupdate', tick); window.clearTimeout(guard) }
+  }, [acting, index, reducedMotion])
+
+  return <video
+    ref={video}
+    className="lobby-film"
+    src={FILM_SRC}
+    poster={FILM_POSTER}
+    muted
+    playsInline
+    preload="auto"
+    aria-label="클린룸 입실 절차 애니메이션"
+  />
+}
+
 const ACTION_DURATIONS = [650, 1850, 1550, 1950, 2250] as const
 const ACTION_LABELS = ['출입 확인 중…', '손과 손목을 세정 중…', '마스크를 착용 중…', '방진복과 장갑을 착용 중…', '에어샤워 가동 중…'] as const
 
@@ -351,37 +409,39 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
     if (actionTimer.current !== null) window.clearTimeout(actionTimer.current)
   }, [])
 
+  // 단계 진행은 영상 구간이 끝나면 일어난다. 예전에는 ACTION_DURATIONS 로
+  // 시간을 세었는데, 이제 화면에 실제로 재생되는 길이가 기준이다.
+  const finishSegment = () => {
+    const nextStep = Math.min(5, step + 1)
+    setStep(nextStep)
+    setActing(false)
+    if (nextStep === 5) {
+      setHallEntered(true)
+      actionTimer.current = null
+      return
+    }
+    if (reducedMotion) { actionTimer.current = null; return }
+    setMoving(true)
+    actionTimer.current = window.setTimeout(() => {
+      setMoving(false)
+      actionTimer.current = null
+    }, 420)
+  }
+
   const advance = () => {
     if (acting || moving || step >= 5) return
     setActing(true)
-    actionTimer.current = window.setTimeout(() => {
-      const nextStep = Math.min(5,step+1)
-      setStep(nextStep)
-      setActing(false)
-      if (nextStep === 5 && !reducedMotion) {
-        setCinematic(true)
-        actionTimer.current = window.setTimeout(() => {
-          setCinematic(false)
-          setHallEntered(true)
-          actionTimer.current = null
-        }, 4400)
-      } else if (nextStep === 5) {
-        setHallEntered(true)
-        actionTimer.current = null
-      } else if (!reducedMotion) {
-        setMoving(true)
-        actionTimer.current = window.setTimeout(() => {
-          setMoving(false)
-          actionTimer.current = null
-        }, 1250)
-      } else actionTimer.current = null
-    }, reducedMotion ? 180 : ACTION_DURATIONS[step])
+    // 모션을 줄이는 사용자에게는 영상을 재생하지 않고 바로 다음 단계로 넘긴다.
+    if (reducedMotion) actionTimer.current = window.setTimeout(finishSegment, 180)
   }
+
 
   return <main className={`cleanroom-lobby ${hall?'hall-open':''} ${cinematic?'cinematic-entry':''}`}>
     <header className="game-topbar"><div><b>VIRTUAL FAB</b><span>FACILITY 01 · SCHOLARBRIDGE</span></div><div><button type="button" className="industry-map-entry" onClick={onOpenIndustryMap}>3D 산업 지식맵</button><span>ACCESS</span><strong>{hall?'GRANTED':cinematic?'ENTERING':`${step}/4`}</strong></div></header>
     <section className="lobby-viewport" aria-label="가상 클린룸 입실 화면">
-      <LobbyScene step={step} acting={acting} hall={hall} cinematic={cinematic} scenarios={scenarios} onSelect={onSelect} reducedMotion={reducedMotion}/>
+      {hall
+        ? <LobbyScene step={step} acting={acting} hall={hall} cinematic={cinematic} scenarios={scenarios} onSelect={onSelect} reducedMotion={reducedMotion}/>
+        : <LobbyFilm step={step} acting={acting} reducedMotion={reducedMotion} onSegmentEnd={finishSegment}/>}
       <div className="scanlines" aria-hidden="true"/>
       {cinematic && <div className="cleanroom-splash" aria-hidden="true"/>}
       <div className="entry-progress" aria-label="클린룸 입실 진행 단계">{ENTRY_STEPS.map((item,index)=><div key={item.code} className={index<step?'done':index===step?'active':''}><span>{String(index+1).padStart(2,'0')}</span><b>{item.code}</b></div>)}</div>
