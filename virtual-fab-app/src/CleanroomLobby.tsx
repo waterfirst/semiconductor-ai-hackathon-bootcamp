@@ -1,4 +1,4 @@
-import { ContactShadows, Environment, Html, Lightformer } from '@react-three/drei'
+import { ContactShadows, Environment, Html, Lightformer, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MathUtils, Vector3 } from 'three'
@@ -75,42 +75,42 @@ function CameraRig({ step, hall, cinematic, reducedMotion }: { step: number; hal
 }
 
 function FacilityShell({ hall }: { hall: boolean }) {
+  // 벽·바닥·천장·집기는 Blender 에서 만든 cleanroom.glb 를 쓴다.
+  // 박스 프리미티브로는 패널 이음매·코빙·FFU 격자·그레이팅을 표현할 수 없었다.
+  // 원본 스크립트: assets/blender/cleanroom_shell.py
+  const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/cleanroom.glb`)
+  const shell = useMemo(() => scene.clone(true), [scene])
   return <group>
-    <mesh position={[0, -.06, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[18, 13]}/><meshStandardMaterial color={hall ? '#0e3038' : '#d9e9e9'} metalness={.18} roughness={.62}/></mesh>
-    <gridHelper args={[18, 18, hall ? '#1e6d77' : '#9fbabc', hall ? '#184852' : '#c5d7d8']} position={[0, 0, 0]}/>
-    <mesh position={[0, 2.75, -4.2]}><boxGeometry args={[18, 5.5, .22]}/><meshStandardMaterial color={hall ? '#08242c' : '#edf6f5'} metalness={.2}/></mesh>
-    <mesh position={[-8.8, 2.5, 0]}><boxGeometry args={[.18, 5, 8.5]}/><meshStandardMaterial color="#c7d8d9" transparent opacity={hall ? .18 : .7}/></mesh>
-    <mesh position={[8.8, 2.5, 0]}><boxGeometry args={[.18, 5, 8.5]}/><meshStandardMaterial color="#c7d8d9" transparent opacity={hall ? .18 : .7}/></mesh>
-    {[-6,-3,0,3,6].map((x) => <group key={x}><mesh position={[x,5.05,0]}><boxGeometry args={[.08,.12,8]}/><meshBasicMaterial color={hall ? '#38e1eb' : '#7bcbd0'}/></mesh><pointLight position={[x,4.6,0]} color={hall ? '#51f4ff' : '#c8ffff'} intensity={hall ? 6 : 2.5} distance={6}/></group>)}
+    <primitive object={shell}/>
+    {/* 조명과 안개는 hall 전환에 따라 바뀌므로 코드에 남긴다. */}
+    {[-6,-3,0,3,6].map((x) => <pointLight key={x} position={[x,4.6,0]} color={hall ? '#51f4ff' : '#c8ffff'} intensity={hall ? 6 : 2.5} distance={6}/>)}
     <fog attach="fog" args={[hall ? '#071c23' : '#dbe8e8', 11, 25]}/>
   </group>
 }
 
+useGLTF.preload(`${import.meta.env.BASE_URL}models/cleanroom.glb`)
+
 function SinkStation({ active, running }: { active: boolean; running: boolean }) {
   const water = useRef<Mesh>(null)
   useFrame(({ clock }) => { if (water.current && running) water.current.scale.y = .8 + Math.sin(clock.elapsedTime * 10) * .14 })
+  // 형상은 cleanroom.glb 에 있다. 여기 남는 것은 움직이거나 상태에 따라 바뀌는 것뿐이다.
   return <group position={[-3.4,0,.6]}>
-    <mesh position={[0,.74,0]}><boxGeometry args={[1.5,.25,1]}/><meshStandardMaterial color="#dbe7e7" metalness={.65} roughness={.18}/></mesh>
-    <mesh position={[0,.84,0]}><cylinderGeometry args={[.55,.42,.18,30]}/><meshStandardMaterial color="#88aeb3" metalness={.8}/></mesh>
-    <mesh position={[0,1.28,-.35]}><torusGeometry args={[.32,.07,12,28,Math.PI]}/><meshStandardMaterial color="#54777d" metalness={.8}/></mesh>
-    <mesh ref={water} visible={running} position={[0,1.02,-.08]}><cylinderGeometry args={[.025,.04,.55,10]}/><meshStandardMaterial color="#5de9ff" emissive="#008da3" emissiveIntensity={1.2} transparent opacity={.7}/></mesh>
-    <Html position={[0,1.75,0]} center><span className={`lobby-station-tag ${active ? 'active' : ''}`}>01 · HAND WASH</span></Html>
+    {running && <mesh ref={water} position={[0,1.02,-.02]}><cylinderGeometry args={[.035,.05,.34,10]}/><meshStandardMaterial color="#bfefff" transparent opacity={.72}/></mesh>}
+    <mesh position={[0,.86,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.44,28]}/><meshBasicMaterial color={active ? '#5fd6e0' : '#9fc4c8'} transparent opacity={active ? .5 : .18}/></mesh>
+    <Html position={[0,1.95,0]} center><span className={`lobby-station-tag ${active ? 'active' : ''}`}>01 · HAND WASH</span></Html>
   </group>
 }
 
 function MaskStation({ active }: { active: boolean }) {
   return <group position={[-1.2,0,.2]}>
-    <mesh position={[0,1.05,0]}><boxGeometry args={[1.2,2.1,.75]}/><meshStandardMaterial color={active ? '#1d8793' : '#567078'} metalness={.24}/></mesh>
-    <mesh position={[0,1.42,.4]}><boxGeometry args={[.68,.42,.08]}/><meshStandardMaterial color="#7df2f2" emissive="#007e88" emissiveIntensity={.8}/></mesh>
-    <mesh position={[0,.73,.48]} rotation={[0,0,.08]}><boxGeometry args={[.72,.38,.05]}/><meshStandardMaterial color="#d9ffff"/></mesh>
+    <mesh position={[0,1.62,.578]}><planeGeometry args={[.64,.38]}/><meshBasicMaterial color={active ? '#8dfbfb' : '#3f7d84'}/></mesh>
     <Html position={[0,2.45,0]} center><span className={`lobby-station-tag ${active ? 'active' : ''}`}>02 · MASK</span></Html>
   </group>
 }
 
 function GownStation({ active }: { active: boolean }) {
   return <group position={[1.15,0,.2]}>
-    <mesh position={[0,1.55,-.2]}><boxGeometry args={[1.8,.12,.75]}/><meshStandardMaterial color="#41636a" metalness={.5}/></mesh>
-    {[-.55,0,.55].map((x,index) => <group key={x} position={[x,1.1,0]}><mesh><cylinderGeometry args={[.25,.42,1.45,12]}/><meshStandardMaterial color={active && index===1 ? '#f7ffff' : '#bdd1d3'}/></mesh><mesh position={[0,.82,0]}><sphereGeometry args={[.26,14,10]}/><meshStandardMaterial color="#e9f4f3"/></mesh></group>)}
+    <mesh position={[0,1.64,-.2]}><boxGeometry args={[1.88,.05,.74]}/><meshBasicMaterial color={active ? '#7ce8ef' : '#5d777d'}/></mesh>
     <Html position={[0,2.45,0]} center><span className={`lobby-station-tag ${active ? 'active' : ''}`}>03 · GOWNING</span></Html>
   </group>
 }
