@@ -23,48 +23,48 @@ const ENTRY_POSITIONS: Array<[number, number, number]> = [
 const FILM_SRC = `${import.meta.env.BASE_URL}media/cleanroom_entry.mp4`
 const FILM_POSTER = `${import.meta.env.BASE_URL}media/cleanroom_entry_cover.jpg`
 const FILM_SEGMENTS: Array<[number, number]> = [
-  [0, 7.917], [7.917, 14.917], [14.917, 21.417], [21.417, 28.917], [28.917, 38],
+  [0.000, 7.917], [7.917, 14.917], [14.917, 21.417], [21.417, 28.917], [28.917, 38.000],
 ]
 
-function LobbyFilm({ step, acting, reducedMotion, onSegmentEnd }: { step: number; acting: boolean; reducedMotion: boolean; onSegmentEnd: () => void }) {
-  const video = useRef<HTMLVideoElement>(null)
+function LobbyFilm({ step, acting, filmRef, onSegmentEnd }: { step: number; acting: boolean; filmRef: React.RefObject<HTMLVideoElement | null>; onSegmentEnd: () => void }) {
   const done = useRef(onSegmentEnd)
   done.current = onSegmentEnd
   const index = Math.min(step, FILM_SEGMENTS.length - 1)
 
   // 단계가 바뀌면 그 구간 첫 프레임에 멈춰 선다.
   useEffect(() => {
-    const el = video.current
+    const el = filmRef.current
     if (!el) return
     el.pause()
     try { el.currentTime = FILM_SEGMENTS[index][0] } catch { /* metadata 미도착 */ }
-  }, [index])
+  }, [filmRef, index])
 
   useEffect(() => {
-    const el = video.current
-    if (!el || !acting || reducedMotion) return
+    const el = filmRef.current
+    if (!el || !acting) return
     const [start, end] = FILM_SEGMENTS[index]
     let finished = false
     const finish = () => {
       if (finished) return
       finished = true
       el.pause()
+      // 재생이 막혔다면 최소한 구간의 끝 화면은 보여준다. 포스터에 멈춰 있으면
+      // 사용자에게는 아무 일도 일어나지 않은 것처럼 보인다.
+      if (el.currentTime < end - 0.3) { try { el.currentTime = end - 0.1 } catch { /* noop */ } }
       el.removeEventListener('timeupdate', tick)
       window.clearTimeout(guard)
       done.current()
     }
     const tick = () => { if (el.currentTime >= end - 0.06) finish() }
-    try { el.currentTime = start } catch { /* noop */ }
     el.addEventListener('timeupdate', tick)
-    // 자동재생 차단·디코딩 지연으로 timeupdate 가 오지 않아도 진행이 멈추지
-    // 않도록 상한을 둔다. 이것이 없으면 버튼이 영영 잠긴다.
     const guard = window.setTimeout(finish, (end - start) * 1000 + 2600)
-    void el.play().catch(() => { /* 사용자 제스처 없이 막히면 guard 가 넘긴다 */ })
+    // advance() 가 클릭 핸들러 안에서 이미 재생을 걸었다. 여기서는 보험으로만 시도한다.
+    if (el.paused) void el.play().catch(() => { /* guard 가 넘긴다 */ })
     return () => { el.removeEventListener('timeupdate', tick); window.clearTimeout(guard) }
-  }, [acting, index, reducedMotion])
+  }, [acting, filmRef, index])
 
   return <video
-    ref={video}
+    ref={filmRef}
     className="lobby-film"
     src={FILM_SRC}
     poster={FILM_POSTER}
@@ -402,6 +402,7 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
   const [hallEntered,setHallEntered] = useState(false)
   const [focusedId,setFocusedId] = useState('photo-cd-drift')
   const actionTimer = useRef<number | null>(null)
+  const filmRef = useRef<HTMLVideoElement>(null)
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const focused = scenarios.find((item)=>item.id===focusedId) ?? scenarios[0]
   const hall = hallEntered
@@ -420,7 +421,6 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
       actionTimer.current = null
       return
     }
-    if (reducedMotion) { actionTimer.current = null; return }
     setMoving(true)
     actionTimer.current = window.setTimeout(() => {
       setMoving(false)
@@ -430,10 +430,16 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
 
   const advance = () => {
     if (acting || moving || step >= 5) return
+    // 재생은 클릭 핸들러 안에서 동기로 건다. useEffect 로 미루면 브라우저가
+    // 사용자 제스처와 연결짓지 못해 자동재생 정책에 막힐 수 있다.
+    const el = filmRef.current
+    if (el) {
+      try { el.currentTime = FILM_SEGMENTS[Math.min(step, FILM_SEGMENTS.length - 1)][0] } catch { /* noop */ }
+      void el.play().catch(() => { /* LobbyFilm 의 guard 가 진행을 이어받는다 */ })
+    }
     setActing(true)
-    // 모션을 줄이는 사용자에게는 영상을 재생하지 않고 바로 다음 단계로 넘긴다.
-    if (reducedMotion) actionTimer.current = window.setTimeout(finishSegment, 180)
   }
+
 
 
   return <main className={`cleanroom-lobby ${hall?'hall-open':''} ${cinematic?'cinematic-entry':''}`}>
@@ -441,7 +447,7 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
     <section className="lobby-viewport" aria-label="가상 클린룸 입실 화면">
       {hall
         ? <LobbyScene step={step} acting={acting} hall={hall} cinematic={cinematic} scenarios={scenarios} onSelect={onSelect} reducedMotion={reducedMotion}/>
-        : <LobbyFilm step={step} acting={acting} reducedMotion={reducedMotion} onSegmentEnd={finishSegment}/>}
+        : <LobbyFilm step={step} acting={acting} filmRef={filmRef} onSegmentEnd={finishSegment}/>}
       <div className="scanlines" aria-hidden="true"/>
       {cinematic && <div className="cleanroom-splash" aria-hidden="true"/>}
       <div className="entry-progress" aria-label="클린룸 입실 진행 단계">{ENTRY_STEPS.map((item,index)=><div key={item.code} className={index<step?'done':index===step?'active':''}><span>{String(index+1).padStart(2,'0')}</span><b>{item.code}</b></div>)}</div>
