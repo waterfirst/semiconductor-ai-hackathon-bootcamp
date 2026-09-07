@@ -1,18 +1,33 @@
-import { ContactShadows, Html, OrbitControls } from '@react-three/drei'
+import { ContactShadows, Html, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import { MathUtils, Vector3 } from 'three'
 import type { Group, Mesh } from 'three'
 import type { Scenario, SessionState } from './types'
 
+// 좌표는 임의값이 아니라 fab_floor.glb 안 장비의 실제 중심이다.
+// assets/blender/convert_fab.py 가 [tool] 줄로 출력한 값을 그대로 옮겼다.
+// 뒷열을 왼쪽에서 오른쪽으로 진행한 뒤 앞열로 내려온다.
 const STATION_LAYOUT: Record<string, [number, number, number]> = {
-  alert: [-5, 0, -1.8],
-  coach: [-3, 0, 2],
-  data: [0, 0, 2.5],
-  doe: [3.2, 0, 1.8],
-  analysis: [5, 0, -1.2],
-  validation: [1.4, 0, -3],
+  alert: [-5.66, 0, -2.45],       // tool_00
+  data: [-1.76, 0, -2.45],        // tool_01
+  doe: [2.14, 0, -2.45],          // tool_02
+  analysis: [6.04, 0, -2.45],     // tool_03
+  validation: [6.06, 0, 4.05],    // tool_07
+  coach: [-5.64, 0, 4.16],        // tool_08
 }
+
+const TOOL_HALF = { w: 1.45, h: 1.85, d: 1.45 }
+
+function FabFloor() {
+  // 방·장비·OHT 레일은 사용자가 GPU PC 에서 만든 semiconductor_fab.blend 를
+  // 쓴다. 박스 프리미티브로는 챔버·로드포트·표지가 나오지 않았다.
+  const { scene } = useGLTF(`${import.meta.env.BASE_URL}models/fab_floor.glb`)
+  const model = useMemo(() => scene.clone(true), [scene])
+  return <primitive object={model} />
+}
+
+useGLTF.preload(`${import.meta.env.BASE_URL}models/fab_floor.glb`)
 
 function Station({
   position,
@@ -32,7 +47,7 @@ function Station({
   const marker = useRef<Mesh>(null)
   useFrame(({ clock }) => {
     if (marker.current && active) {
-      marker.current.position.y = 2.25 + Math.sin(clock.elapsedTime * 2.4) * 0.12
+      marker.current.position.y = 4.15 + Math.sin(clock.elapsedTime * 2.4) * 0.12
       marker.current.rotation.y = clock.elapsedTime * 0.7
     }
   })
@@ -40,8 +55,11 @@ function Station({
 
   return (
     <group position={position}>
+      {/* 장비 형상은 fab_floor.glb 가 그린다. 여기서는 그 위를 덮는 클릭
+          영역과 상태 표시만 둔다. opacity 0 이 아니라 낮은 값을 쓰는 이유는
+          three.js 가 visible=false 인 메시를 레이캐스트에서 건너뛰기 때문이다. */}
       <mesh
-        position={[0, 0.45, 0]}
+        position={[0, TOOL_HALF.h, 0]}
         onClick={(event) => {
           event.stopPropagation()
           onSelect()
@@ -49,14 +67,14 @@ function Station({
         onPointerOver={() => { document.body.style.cursor = 'pointer' }}
         onPointerOut={() => { document.body.style.cursor = 'default' }}
       >
-        <boxGeometry args={[1.65, 0.9, 1.3]} />
-        <meshStandardMaterial color={color} roughness={0.58} metalness={0.15} />
+        <boxGeometry args={[TOOL_HALF.w * 2, TOOL_HALF.h * 2, TOOL_HALF.d * 2]} />
+        <meshBasicMaterial color={color} transparent opacity={active ? 0.16 : complete ? 0.08 : 0.001} depthWrite={false} />
       </mesh>
-      <mesh position={[0, 1.08, 0]}>
-        <boxGeometry args={[1.2, 0.14, 0.88]} />
-        <meshStandardMaterial color={active ? '#dffcff' : '#c9d4d6'} />
+      <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[1.45, 1.72, 40]} />
+        <meshBasicMaterial color={color} transparent opacity={active ? 0.85 : complete ? 0.5 : 0.22} />
       </mesh>
-      <Html position={[0, 1.48, 0]} center distanceFactor={11}>
+      <Html position={[0, 3.85, 0]} center distanceFactor={13}>
         <div className={`station-tag ${active ? 'active' : complete ? 'complete' : ''}`}>
           <span>{String(index + 1).padStart(2, '0')}</span>{label}
         </div>
@@ -189,15 +207,11 @@ export function FabScene({ scenario, session, onStationSelect }: { scenario: Sce
   const pathPoints = useMemo(() => scenario.stages.map((stage) => STATION_LAYOUT[stage.station]), [scenario])
   return (
     <div className="scene-wrap" aria-label="가상 팹 공정 스테이션">
-      <Canvas camera={{ position: [11.5, 10, 13], fov: 40 }} dpr={[1, 1.65]} frameloop={reducedMotion ? 'demand' : 'always'}>
+      <Canvas camera={{ position: [13.5, 11.5, 16.5], fov: 42 }} dpr={[1, 1.65]} frameloop={reducedMotion ? 'demand' : 'always'}>
         <color attach="background" args={['#e8eff0']} />
-        <ambientLight intensity={1.7} />
+        <ambientLight intensity={1.15} />
         <directionalLight position={[5, 10, 6]} intensity={2.2} castShadow />
-        <gridHelper args={[18, 18, '#b5c5c8', '#d3dfe1']} position={[0, 0, 0]} />
-        <mesh position={[0, -0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[18, 14]} />
-          <meshStandardMaterial color="#eef3f4" roughness={0.9} />
-        </mesh>
+        <FabFloor />
         <StageExhibit key={stageIndex} stageIndex={stageIndex} />
         <FabOperator target={pathPoints[stageIndex]} stageIndex={stageIndex}/>
         {pathPoints.map((point, index) => index < pathPoints.length - 1 && (
@@ -217,8 +231,8 @@ export function FabScene({ scenario, session, onStationSelect }: { scenario: Sce
             onSelect={() => onStationSelect(index)}
           />
         ))}
-        <ContactShadows position={[0, 0.01, 0]} opacity={0.18} scale={16} blur={2.8} far={8} />
-        <OrbitControls enablePan={false} minDistance={11} maxDistance={22} minPolarAngle={0.72} maxPolarAngle={1.2} target={[0, 0.5, 0]} />
+        <ContactShadows position={[0, 0.02, 0]} opacity={0.22} scale={22} blur={2.6} far={9} />
+        <OrbitControls enablePan={false} minDistance={16} maxDistance={38} minPolarAngle={0.72} maxPolarAngle={1.2} target={[0, 1.2, 0]} />
       </Canvas>
       <div className="exhibit-label"><span>ACTIVE MODEL · {scenario.process}</span><b>{EXHIBIT_LABELS[stageIndex]}</b></div>
       <div className="mission-hud"><span>MISSION {String(stageIndex + 1).padStart(2, '0')}</span><b>{scenario.stages[stageIndex].label}</b><small>{session.completed ? 'CLEAR' : 'IN PROGRESS'} · XP {session.score}/100</small><div><i style={{ transform: `scaleX(${session.score / 100})` }}/></div></div>
