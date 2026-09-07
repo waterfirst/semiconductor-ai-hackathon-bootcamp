@@ -308,3 +308,8 @@ footer p { margin: 0; }.loading { min-height: 100vh; display: grid; place-conten
 .exhibit-play { z-index:5; border:0; text-align:left; cursor:pointer; font:inherit; pointer-events:auto; }
 .exhibit-play i { display:block; margin-top:6px; color:var(--amber); font:700 .62rem/1 var(--narrow); font-style:normal; letter-spacing:.1em; }
 .exhibit-play:hover i { text-decoration:underline; }
+
+/* 입실 단계 건너뛰기. 영상 위에 얹히므로 z-index 를 진행바보다 높게 둔다. */
+.lobby-skip { position:absolute; top:12px; right:12px; z-index:6; padding:8px 14px; border:1px solid #5b8d96; border-radius:999px; color:#e6f8fa; background:rgba(5,26,32,.74); font:700 .72rem/1 var(--narrow); letter-spacing:.05em; cursor:pointer; backdrop-filter:blur(2px); }
+.lobby-skip:hover { border-color:#8ad7e0; background:rgba(12,54,64,.9); }
+@media (max-width:760px){ .lobby-skip { top:8px; right:8px; padding:7px 11px; font-size:.66rem; } }

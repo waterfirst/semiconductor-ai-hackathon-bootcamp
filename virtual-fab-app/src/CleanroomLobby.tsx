@@ -459,6 +459,19 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
     }, 420)
   }
 
+  // 영상 한 구간이 6.5~9초라 다섯 번을 다 기다리면 40초 가까이 걸린다.
+  // 이미 본 사람을 위해 대기 없이 다음 단계로 넘긴다.
+  const skipStep = () => {
+    if (step >= 5) return
+    if (actionTimer.current !== null) { window.clearTimeout(actionTimer.current); actionTimer.current = null }
+    filmRef.current?.pause()
+    setActing(false)
+    setMoving(false)
+    const nextStep = Math.min(5, step + 1)
+    setStep(nextStep)
+    if (nextStep === 5) setHallEntered(true)
+  }
+
   const advance = () => {
     if (acting || moving || step >= 5) return
     // 재생은 클릭 핸들러 안에서 동기로 건다. useEffect 로 미루면 브라우저가
@@ -476,6 +489,11 @@ export function CleanroomLobby({ scenarios, loading, error, onSelect, onOpenIndu
   return <main className={`cleanroom-lobby ${hall?'hall-open':''} ${cinematic?'cinematic-entry':''}`}>
     <header className="game-topbar"><div><b>VIRTUAL FAB</b><span>FACILITY 01 · SCHOLARBRIDGE</span></div><div><button type="button" className="industry-map-entry" onClick={onOpenIndustryMap}>3D 산업 지식맵</button><span>ACCESS</span><strong>{hall?'GRANTED':cinematic?'ENTERING':`${step}/4`}</strong></div></header>
     <section className="lobby-viewport" aria-label="가상 클린룸 입실 화면">
+      {!hall && step < 5 && (
+        <button type="button" className="lobby-skip" onClick={skipStep}>
+          {step === 4 ? '입실 완료 ⏭' : '다음 단계 ⏭'}
+        </button>
+      )}
       {hall
         ? <LobbyScene step={step} acting={acting} hall={hall} cinematic={cinematic} scenarios={scenarios} onSelect={onSelect} reducedMotion={reducedMotion}/>
         : <LobbyFilm step={step} acting={acting} filmRef={filmRef} onSegmentEnd={finishSegment}/>}
