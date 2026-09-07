@@ -53,14 +53,45 @@ function LobbyFilm({ step, acting, filmRef, onSegmentEnd }: { step: number; acti
       if (el.currentTime < end - 0.3) { try { el.currentTime = end - 0.1 } catch { /* noop */ } }
       el.removeEventListener('timeupdate', tick)
       window.clearTimeout(guard)
+      window.clearTimeout(watchdog)
+      if (raf) cancelAnimationFrame(raf)
       done.current()
     }
     const tick = () => { if (el.currentTime >= end - 0.06) finish() }
     el.addEventListener('timeupdate', tick)
-    const guard = window.setTimeout(finish, (end - start) * 1000 + 2600)
-    // advance() 가 클릭 핸들러 안에서 이미 재생을 걸었다. 여기서는 보험으로만 시도한다.
-    if (el.paused) void el.play().catch(() => { /* guard 가 넘긴다 */ })
-    return () => { el.removeEventListener('timeupdate', tick); window.clearTimeout(guard) }
+    const guard = window.setTimeout(finish, (end - start) * 1000 + 3200)
+
+    // 재생이 막히는 환경이 있다. 그때는 프레임을 직접 넘겨 움직임을 만든다.
+    // 영상이 아니라 단계별 스틸로 보이던 증상의 최종 대비책이다.
+    let raf = 0
+    let scrubbing = false
+    let last = 0
+    const scrub = (now: number) => {
+      if (!last) last = now
+      const dt = Math.min(0.25, (now - last) / 1000)
+      last = now
+      try { el.currentTime = Math.min(end - 0.05, el.currentTime + dt) } catch { /* noop */ }
+      if (el.currentTime >= end - 0.08) { finish(); return }
+      raf = requestAnimationFrame(scrub)
+    }
+    const startScrub = () => {
+      if (scrubbing || finished) return
+      scrubbing = true
+      el.pause()
+      raf = requestAnimationFrame(scrub)
+    }
+    if (el.paused) void el.play().catch(() => { /* watchdog 이 스크럽으로 넘긴다 */ })
+    // 0.6초 안에 재생이 실제로 진행되지 않으면 직접 넘기기로 전환한다.
+    const watchdog = window.setTimeout(() => {
+      if (el.paused || el.currentTime <= start + 0.05) startScrub()
+    }, 600)
+
+    return () => {
+      el.removeEventListener('timeupdate', tick)
+      window.clearTimeout(guard)
+      window.clearTimeout(watchdog)
+      if (raf) cancelAnimationFrame(raf)
+    }
   }, [acting, filmRef, index])
 
   return <video
